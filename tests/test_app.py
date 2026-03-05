@@ -145,3 +145,86 @@ def test_review_and_save_does_not_save_when_not_clicked():
         _show_review_and_save(cat_df)
 
     mock_save.assert_not_called()
+
+
+def test_review_and_save_handles_both_buttons_true_without_keyerror():
+    cat_df = _make_categorized_df()
+
+    mock_st = _make_mock_st(button_returns=[True, True])
+    mock_st.data_editor.return_value = cat_df
+    mock_st.session_state = {"auth_user": {"email": "user@example.com"}, "categorized_df": cat_df.copy()}
+
+    with patch("webapp.app.st", mock_st), \
+         patch("webapp.app.save_transactions", return_value=1):
+        from webapp.app import _show_review_and_save
+        _show_review_and_save(cat_df)
+
+
+# ── modern UI helpers ──────────────────────────────────────────────────────────
+
+def test_inject_modern_css_renders_style_block():
+    mock_st = MagicMock()
+
+    with patch("webapp.app.st", mock_st):
+        from webapp.app import _inject_modern_css
+        _inject_modern_css()
+
+    assert mock_st.markdown.called
+    rendered = mock_st.markdown.call_args[0][0]
+    assert ".ss-hero" in rendered
+    assert ".workflow-step" in rendered
+
+
+def test_render_workflow_marks_upload_step_as_current_when_no_data():
+    mock_st = MagicMock()
+
+    with patch("webapp.app.st", mock_st):
+        from webapp.app import _render_workflow
+        _render_workflow(has_df=False, has_categorized=False)
+
+    rendered = " ".join(call.args[0] for call in mock_st.markdown.call_args_list if call.args)
+    assert "Upload PDFs" in rendered
+    assert "Current" in rendered
+
+
+def test_app_calls_modern_ui_helpers_for_authenticated_user():
+    with patch("webapp.app.is_authenticated", return_value=True), \
+         patch("webapp.app.get_files", return_value=[]), \
+         patch("webapp.app.st.session_state", {}), \
+         patch("webapp.app.st.switch_page") as switch_page, \
+         patch("webapp.app._inject_modern_css") as inject_css, \
+         patch("webapp.app._render_hero") as render_hero, \
+         patch("webapp.app._render_workflow") as render_workflow:
+        app()
+
+    inject_css.assert_called_once()
+    render_hero.assert_called_once()
+    switch_page.assert_called_once_with("pages/1_visualizations.py")
+    render_workflow.assert_not_called()
+
+
+def test_authenticated_user_on_app_page_redirects_to_visualizations():
+    with patch("webapp.app.is_authenticated", return_value=True), \
+         patch("webapp.app.st.session_state", {}), \
+         patch("webapp.app.st.switch_page") as switch_page:
+        app()
+    switch_page.assert_called_once_with("pages/1_visualizations.py")
+
+
+def test_set_persistent_auth_writes_query_token():
+    mock_st = MagicMock()
+    mock_st.query_params = {}
+    with patch("webapp.app.st", mock_st), patch("webapp.app.create_auth_token", return_value="signed-token"):
+        from webapp.app import _set_persistent_auth
+        _set_persistent_auth("user@example.com")
+    assert mock_st.query_params["auth"] == "signed-token"
+
+
+def test_clear_persistent_auth_removes_query_token():
+    mock_st = MagicMock()
+    mock_st.query_params = {"auth": "signed-token", "other": "keep"}
+    with patch("webapp.app.st", mock_st):
+        from webapp.app import _clear_persistent_auth
+        _clear_persistent_auth()
+    assert "auth" not in mock_st.query_params
+    assert mock_st.query_params["other"] == "keep"
