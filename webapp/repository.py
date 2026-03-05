@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import pandas as pd
-from pymongo import ASCENDING
+from pymongo import ASCENDING, UpdateOne
 
 from webapp.db import get_db
 
@@ -10,7 +10,10 @@ _COLLECTION = "transactions"
 _EMPTY_COLUMNS = ["user_email", "date", "description", "amount", "bank", "category", "saved_at"]
 
 
-def save_transactions(df: pd.DataFrame, user_email: str) -> int:
+def save_transactions(df: pd.DataFrame, user_email: str, batch_size: int = 200) -> int:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be greater than 0")
+
     db = get_db()
     collection = db[_COLLECTION]
 
@@ -27,6 +30,7 @@ def save_transactions(df: pd.DataFrame, user_email: str) -> int:
     )
 
     saved_count = 0
+    operations: list[UpdateOne] = []
     for _, row in df.iterrows():
         date_str = str(row["date"])
         filter_doc = {
@@ -43,8 +47,16 @@ def save_transactions(df: pd.DataFrame, user_email: str) -> int:
                 "saved_at": datetime.now(tz=timezone.utc).isoformat(),
             }
         }
-        collection.update_one(filter_doc, update_doc, upsert=True)
-        saved_count += 1
+        operations.append(UpdateOne(filter_doc, update_doc, upsert=True))
+
+        if len(operations) >= batch_size:
+            collection.bulk_write(operations, ordered=False)
+            saved_count += len(operations)
+            operations = []
+
+    if operations:
+        collection.bulk_write(operations, ordered=False)
+        saved_count += len(operations)
 
     return saved_count
 

@@ -25,7 +25,26 @@ Valid categories: {categories}
 )
 
 
-def categorize_transactions(df: pd.DataFrame) -> pd.DataFrame:
+def _sanitize_categories(raw_text: str, expected_count: int) -> list[str]:
+    raw_lines = raw_text.strip().splitlines()
+    categories = []
+    for line in raw_lines:
+        line = line.strip()
+        # Strip leading numbering like "1. " if model adds it
+        if ". " in line:
+            line = line.split(". ", 1)[-1].strip()
+        categories.append(line if line in VALID_CATEGORIES else "Other")
+
+    # Pad or truncate to match expected batch size
+    while len(categories) < expected_count:
+        categories.append("Other")
+    return categories[:expected_count]
+
+
+def categorize_transactions(df: pd.DataFrame, batch_size: int = 75) -> pd.DataFrame:
+    if batch_size <= 0:
+        raise ValueError("batch_size must be greater than 0")
+
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
         raise ValueError("DEEPSEEK_API_KEY environment variable is not set")
@@ -36,31 +55,25 @@ def categorize_transactions(df: pd.DataFrame) -> pd.DataFrame:
     )
 
     descriptions = df["description"].tolist()
-    user_content = "\n".join(f"{i + 1}. {desc}" for i, desc in enumerate(descriptions))
-
-    completion = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-        temperature=0.0,
-    )
-
-    raw_lines = completion.choices[0].message.content.strip().splitlines()
-
     categories = []
-    for line in raw_lines:
-        line = line.strip()
-        # Strip leading numbering like "1. " if model adds it
-        if ". " in line:
-            line = line.split(". ", 1)[-1].strip()
-        categories.append(line if line in VALID_CATEGORIES else "Other")
+    for start_idx in range(0, len(descriptions), batch_size):
+        batch_descriptions = descriptions[start_idx : start_idx + batch_size]
+        user_content = "\n".join(f"{i + 1}. {desc}" for i, desc in enumerate(batch_descriptions))
 
-    # Pad or truncate to match DataFrame length
-    while len(categories) < len(df):
-        categories.append("Other")
-    categories = categories[: len(df)]
+        completion = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=0.0,
+        )
+        categories.extend(
+            _sanitize_categories(
+                completion.choices[0].message.content,
+                expected_count=len(batch_descriptions),
+            )
+        )
 
     result = df.copy()
     result["category"] = categories

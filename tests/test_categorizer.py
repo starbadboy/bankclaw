@@ -66,3 +66,32 @@ def test_valid_categories_list():
     assert "Transport" in VALID_CATEGORIES
     assert "Other" in VALID_CATEGORIES
     assert len(VALID_CATEGORIES) == 10
+
+
+def test_categorize_processes_in_batches_and_preserves_order(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB TAXI", "amount": -12.50, "bank": "DBS"},
+        {"date": "2024-01-16", "description": "NTUC FAIRPRICE", "amount": -45.30, "bank": "DBS"},
+        {"date": "2024-01-17", "description": "SP GROUP", "amount": -90.00, "bank": "DBS"},
+    ])
+
+    first_choice = MagicMock()
+    first_choice.message.content = "Transport\nFood & Dining"
+    second_choice = MagicMock()
+    second_choice.message.content = "Utilities"
+
+    first_completion = MagicMock()
+    first_completion.choices = [first_choice]
+    second_completion = MagicMock()
+    second_completion.choices = [second_choice]
+
+    with patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = [first_completion, second_completion]
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(df, batch_size=2)
+
+    assert list(result["category"]) == ["Transport", "Food & Dining", "Utilities"]
+    assert mock_client.chat.completions.create.call_count == 2
