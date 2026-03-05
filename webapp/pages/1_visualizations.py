@@ -1,12 +1,17 @@
 from datetime import date, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
 import plotly.graph_objs as go
 import streamlit as st
+from dotenv import load_dotenv
 
 from webapp.pages.visualizations_helpers import compute_category_expenses, compute_monthly_cash_flow
 from webapp.repository import get_transactions_by_date_range
+
+# Load environment variables from .env file
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 if TYPE_CHECKING:
     from streamlit.delta_generator import DeltaGenerator

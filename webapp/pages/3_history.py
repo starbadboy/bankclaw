@@ -1,8 +1,13 @@
 from datetime import date, timedelta
+from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
 
 from webapp.repository import get_transactions_by_date_range
+
+# Load environment variables from .env file
+load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 
 def history_page() -> None:

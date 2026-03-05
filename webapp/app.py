@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 from monopoly.pdf import MissingPasswordError, PdfDocument
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
@@ -9,6 +12,9 @@ from webapp.helpers import create_df, parse_bank_statement, show_df
 from webapp.logo import logo
 from webapp.models import ProcessedFile
 from webapp.repository import save_transactions
+
+# Load environment variables from .env file
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # number of files that need to be added before progress bar appears
 PBAR_MIN_FILES = 4
