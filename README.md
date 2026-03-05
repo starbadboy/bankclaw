@@ -111,6 +111,27 @@ or store them in an .env file in the project root:
 echo 'PDF_PASSWORDS=["foo"]' > .env
 ```
 
+## MongoDB + AI Categorisation
+
+Set the following environment variables to enable AI categorisation and MongoDB storage:
+
+| Variable | Required | Description |
+|---|---|---|
+| `DEEPSEEK_API_KEY` | Yes | DeepSeek API key — get one at [platform.deepseek.com](https://platform.deepseek.com) |
+| `MONGODB_URL` | Yes | MongoDB Atlas connection string (e.g. `mongodb+srv://user:pass@cluster.mongodb.net/`) |
+| `MONGODB_DB_NAME` | No | Database name (default: `bankclaw`) |
+
+```sh
+export DEEPSEEK_API_KEY="your-deepseek-key"
+export MONGODB_URL="mongodb+srv://user:pass@cluster.mongodb.net/"
+export MONGODB_DB_NAME="bankclaw"  # optional
+```
+
+When both variables are set, a **"Categorise & Save to MongoDB"** button appears after processing PDFs. A **"3 History"** page lets you browse and filter saved transactions by date range.
+
 # Features
 - Supports uploading multiple bank statements
 - Allows unlocking of PDFs using user-provided credentials via the frontend
+- AI-powered transaction categorisation via DeepSeek (optional)
+- MongoDB Atlas storage with duplicate-safe upserts (optional)
+- Transaction history page with date-range filtering and CSV export
