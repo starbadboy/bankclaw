@@ -34,6 +34,7 @@ _CATEGORY_COLORS = [
     "#A8A8A8",
 ]
 _HOVERINFO_TEXT_NAME = "text+name"
+_HTML_DIV_CLOSE = "</div>"
 
 _KPI_CSS = """
 <style>
@@ -44,21 +45,42 @@ _KPI_CSS = """
     padding: 20px;
     margin-bottom: 12px;
 }
-.insights-shell h2 {
-    margin: 0;
-    font-size: 1.35rem;
-    color: #0f172a;
-}
-.insights-shell p {
-    margin: 6px 0 0 0;
-    color: #475569;
-}
 .insights-filter-shell {
     border: 1px solid #e2e8f0;
     border-radius: 14px;
     background: #ffffff;
     padding: 14px 16px 6px 16px;
     margin-bottom: 14px;
+}
+.insights-control-shell {
+    border: 1px solid #dbe7ff;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    padding: 14px 16px 12px 16px;
+    margin-bottom: 16px;
+}
+.insights-section-shell {
+    border: 1px solid #e5e7eb;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 14px 16px 8px 16px;
+    margin-top: 14px;
+}
+.insights-section-shell h3 {
+    margin: 0 0 4px 0;
+    color: #0f172a;
+    font-size: 1.05rem;
+}
+.insights-section-shell p {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+.insights-chart-shell {
+    border: 1px solid #edf0f5;
+    border-radius: 14px;
+    padding: 12px 12px 4px 12px;
+    background: #fcfdff;
 }
 .kpi-card {
     background: rgba(0,0,0,0.03);
@@ -126,10 +148,11 @@ def _show_cash_flow_chart(monthly: pd.DataFrame) -> None:
     )
     layout = go.Layout(
         title="Monthly Cash Flow",
-        title_font={"size": 22},
+        title_font={"size": 20},
         xaxis={"title": "Month", "showgrid": False, "dtick": "M1"},
         yaxis={
-            "showgrid": False,
+            "showgrid": True,
+            "gridcolor": "#eef2f7",
             "zeroline": True,
             "zerolinecolor": "#EFEFEF",
             "zerolinewidth": 2,
@@ -139,6 +162,9 @@ def _show_cash_flow_chart(monthly: pd.DataFrame) -> None:
         hovermode="x unified",
         bargap=0.5,
         showlegend=True,
+        legend={"orientation": "h", "y": 1.12, "x": 0.01},
+        plot_bgcolor="#fcfdff",
+        paper_bgcolor="#fcfdff",
     )
     st.plotly_chart(go.Figure(data=[income_bar, expense_bar, net_line], layout=layout), use_container_width=True)
 
@@ -158,16 +184,19 @@ def _show_pl_chart(monthly: pd.DataFrame) -> None:
         ],
         layout=go.Layout(
             title="Monthly Profit / Loss",
-            title_font={"size": 22},
+            title_font={"size": 18},
             xaxis={"showgrid": False, "dtick": "M1"},
             yaxis={
-                "showgrid": False,
+                "showgrid": True,
+                "gridcolor": "#eef2f7",
                 "zeroline": True,
                 "zerolinecolor": "#EFEFEF",
                 "zerolinewidth": 2,
                 "tickformat": "$,.1s",
             },
             bargap=0.5,
+            plot_bgcolor="#fcfdff",
+            paper_bgcolor="#fcfdff",
         ),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -185,7 +214,13 @@ def _show_category_donut(cat_expenses: pd.Series) -> None:
                 hovertemplate="%{label}: $%{value:,.0f}<extra></extra>",
             )
         ],
-        layout=go.Layout(title="Expenses by Category", title_font={"size": 22}, showlegend=False),
+        layout=go.Layout(
+            title="Expenses by Category",
+            title_font={"size": 18},
+            showlegend=False,
+            plot_bgcolor="#fcfdff",
+            paper_bgcolor="#fcfdff",
+        ),
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -208,15 +243,47 @@ def show_mongodb_dashboard(df: pd.DataFrame) -> None:
     _render_kpi(c3, "Net Savings", net_str, net_color)
     _render_kpi(c4, "Savings Rate", f"{savings_rate:.1f}%", "#00CEAA" if savings_rate >= 0 else "#F63366")
 
-    st.markdown("<div style='margin-top:24px'></div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="insights-section-shell">
+            <h3>Primary Trend</h3>
+            <p>Track inflow, outflow, and monthly net movement in one view.</p>
+        </div>
+        <div class="insights-chart-shell">
+        """,
+        unsafe_allow_html=True,
+    )
     _show_cash_flow_chart(monthly)
+    st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
 
     col_left, col_right = st.columns(2)
     with col_left:
+        st.markdown(
+            """
+            <div class="insights-section-shell">
+                <h3>Profitability Snapshot</h3>
+                <p>Compare monthly gains and losses to identify trend shifts.</p>
+            </div>
+            <div class="insights-chart-shell">
+            """,
+            unsafe_allow_html=True,
+        )
         _show_pl_chart(monthly)
+        st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
     with col_right:
         if not cat_expenses.empty:
+            st.markdown(
+                """
+                <div class="insights-section-shell">
+                    <h3>Category Breakdown</h3>
+                    <p>See where spending concentration is highest by category.</p>
+                </div>
+                <div class="insights-chart-shell">
+                """,
+                unsafe_allow_html=True,
+            )
             _show_category_donut(cat_expenses)
+            st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
 
 
 def _render_supported_banks_thumbnail() -> None:
@@ -243,7 +310,7 @@ def _render_account_top_right(user_email: str) -> None:
             st.switch_page("app.py")
 
 
-def _open_upload_dialog(user_email: str) -> None:
+def _open_upload_dialog() -> None:
     st.session_state["viz_upload_dialog_open"] = True
 
 
@@ -336,19 +403,9 @@ def _show_upload_dialog(user_email: str) -> None:
 
 st.markdown(_KPI_CSS, unsafe_allow_html=True)
 _render_account_top_right(current_user_email)
-st.markdown(
-    """
-    <div class="insights-shell">
-        <h2>Insights Workspace</h2>
-        <p>Explore cash flow trends and category spending from your saved, reviewed transactions.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
 
-st.markdown('<div class="insights-filter-shell">', unsafe_allow_html=True)
 st.markdown("### Historical Cash Flow Dashboard")
-st.caption("Step 1: Choose a date range, then load your saved transactions.")
+st.caption("Pick a date range to refresh your dashboard, or upload statements for new entries.")
 
 date_col1, date_col2 = st.columns(2)
 default_start = date.today() - timedelta(days=365)
@@ -356,10 +413,11 @@ with date_col1:
     hist_start = st.date_input("From", value=default_start, key="hist_start")
 with date_col2:
     hist_end = st.date_input("To", value=date.today(), key="hist_end")
-st.markdown("</div>", unsafe_allow_html=True)
+st.caption("Need more data in this window? Use Upload Statement PDF to import new statements.")
+apply_filter_clicked = st.button("Apply Date Filter", type="primary")
 
 if st.button("Upload Statement PDF", type="primary"):
-    _open_upload_dialog(current_user_email)
+    _open_upload_dialog()
 _maybe_open_upload_dialog(current_user_email)
 
 # Clear cached data if date range has changed
@@ -368,16 +426,23 @@ current_range = (str(hist_start), str(hist_end))
 if cached_range and cached_range != current_range:
     st.session_state.pop("hist_df", None)
     st.session_state.pop("hist_date_range", None)
+    st.session_state.pop("hist_needs_load", None)
 
 if hist_start > hist_end:
     st.error("'From' date must be before 'To' date.")
 else:
+    if "hist_needs_load" not in st.session_state:
+        st.session_state["hist_needs_load"] = True
+    if apply_filter_clicked:
+        st.session_state["hist_needs_load"] = True
+
     cached_range = st.session_state.get("hist_date_range")
     current_range = (str(hist_start), str(hist_end))
     if cached_range != current_range:
         st.session_state.pop("hist_df", None)
+        st.session_state["hist_needs_load"] = True
 
-    if "hist_df" not in st.session_state:
+    if st.session_state.get("hist_needs_load", False):
         try:
             st.session_state["hist_df"] = get_transactions_by_date_range(
                 str(hist_start),
@@ -385,6 +450,7 @@ else:
                 user_email=current_user_email,
             )
             st.session_state["hist_date_range"] = current_range
+            st.session_state["hist_needs_load"] = False
         except ValueError as e:
             st.error(f"Configuration error: {e}")
         except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001

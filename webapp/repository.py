@@ -64,3 +64,23 @@ def get_transactions_by_date_range(start_date: str, end_date: str, user_email: s
         return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
     return pd.DataFrame(records)
+
+
+def delete_transactions(df: pd.DataFrame, user_email: str) -> int:
+    db = get_db()
+    collection = db[_COLLECTION]
+
+    deleted_count = 0
+    for _, row in df.iterrows():
+        result = collection.delete_one(
+            {
+                "user_email": user_email,
+                "date": str(row["date"]),
+                "description": str(row["description"]),
+                "amount": float(row["amount"]),
+                "bank": str(row["bank"]),
+            }
+        )
+        deleted_count += result.deleted_count
+
+    return deleted_count

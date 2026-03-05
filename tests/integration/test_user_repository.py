@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from webapp.repository import get_transactions_by_date_range, save_transactions
+from webapp.repository import delete_transactions, get_transactions_by_date_range, save_transactions
 from webapp.user_repository import authenticate_user, create_user
 
 
@@ -92,3 +92,27 @@ def test_save_transactions_creates_unique_compound_index():
     assert ("description", 1) in index_spec
     assert ("amount", 1) in index_spec
     assert index_kwargs["unique"] is True
+
+
+def test_delete_transactions_uses_user_scoped_filter():
+    mock_collection = MagicMock()
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value = mock_collection
+    mock_collection.delete_one.return_value.deleted_count = 1
+
+    delete_df = pd.DataFrame([
+        {
+            "date": "2024-01-10",
+            "description": "Salary",
+            "amount": 5000.0,
+            "bank": "DBS",
+        }
+    ])
+
+    with patch("webapp.repository.get_db", return_value=mock_db):
+        deleted_count = delete_transactions(delete_df, user_email="u@example.com")
+
+    assert deleted_count == 1
+    delete_filter = mock_collection.delete_one.call_args[0][0]
+    assert delete_filter["user_email"] == "u@example.com"
+    assert delete_filter["description"] == "Salary"

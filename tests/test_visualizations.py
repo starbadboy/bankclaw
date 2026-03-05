@@ -64,8 +64,33 @@ def test_visualizations_page_renders_modern_workspace_shell():
         runpy.run_path(str(page_path))
 
     rendered = " ".join(call.args[0] for call in mock_markdown.call_args_list if call.args)
-    assert "Insights Workspace" in rendered
-    assert "insights-filter-shell" in rendered
+    assert "Insights Workspace" not in rendered
+    assert '<div class="insights-filter-shell' not in rendered
+
+
+def test_visualizations_page_renders_structured_analytics_sections():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    def columns_factory(spec):
+        if isinstance(spec, int):
+            return [MagicMock() for _ in range(spec)]
+        if isinstance(spec, list):
+            return [MagicMock() for _ in range(len(spec))]
+        return [MagicMock(), MagicMock()]
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown") as mock_markdown, \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.plotly_chart"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=make_df()):
+        runpy.run_path(str(page_path))
+
+    rendered = " ".join(call.args[0] for call in mock_markdown.call_args_list if call.args)
+    assert "insights-control-shell" in rendered
+    assert "insights-section-shell" in rendered
+    assert "insights-chart-shell" in rendered
 
 
 def test_visualizations_page_uses_last_year_default_and_shows_upload_cta_when_empty():
@@ -90,6 +115,7 @@ def test_visualizations_page_uses_last_year_default_and_shows_upload_cta_when_em
     assert from_call.kwargs["value"] == expected_start
     assert to_call.kwargs["value"] == fixed_today
     mock_button.assert_any_call("Upload Statement PDF", type="primary")
+    mock_button.assert_any_call("Apply Date Filter", type="primary")
 
 
 def test_upload_dialog_shows_supported_banks_thumbnail():
@@ -209,7 +235,7 @@ def test_open_upload_dialog_sets_flag_without_opening_dialog_directly():
         open_fn.__globals__["_show_upload_dialog"] = dialog_fn_spy
         st_obj.session_state = {}
 
-        open_fn("user@example.com")
+        open_fn()
 
     assert st_obj.session_state["viz_upload_dialog_open"] is True
     dialog_fn_spy.assert_not_called()
