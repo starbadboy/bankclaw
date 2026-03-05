@@ -15,3 +15,12 @@ class ProcessedFile:
 
     def __iter__(self):
         return iter(self.transactions)
+
+
+@dataclass
+class CategorizedTransaction:
+    date: str
+    description: str
+    amount: float
+    bank: str
+    category: str
