@@ -15,3 +15,8 @@ uv.lock
 
 # local secrets — never commit
 .env
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
