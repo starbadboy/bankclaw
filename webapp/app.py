@@ -6,12 +6,21 @@ from dotenv import load_dotenv
 from monopoly.pdf import MissingPasswordError, PdfDocument
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
+from webapp.auth import (
+    get_current_user_email,
+    hash_password,
+    init_auth_state,
+    is_authenticated,
+    normalize_email,
+    verify_password,
+)
 from webapp.categorizer import VALID_CATEGORIES, categorize_transactions
 from webapp.constants import APP_DESCRIPTION
 from webapp.helpers import create_df, parse_bank_statement, show_df
 from webapp.logo import logo
 from webapp.models import ProcessedFile
 from webapp.repository import save_transactions
+from webapp.user_repository import authenticate_user, create_user
 
 # Load environment variables from .env file
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -24,6 +33,13 @@ def app() -> pd.DataFrame:
     st.set_page_config(page_title="Statement Sensei", layout="wide")
     st.image(logo, width=450)
     st.markdown(APP_DESCRIPTION)
+    init_auth_state(st.session_state)
+
+    if not is_authenticated(st.session_state):
+        _show_auth_screen()
+        return None
+
+    _show_logged_in_banner()
 
     files = get_files()
 
@@ -46,6 +62,53 @@ def app() -> pd.DataFrame:
             _show_review_and_save(categorized_df)
 
     return df
+
+
+def _show_logged_in_banner() -> None:
+    user_email = get_current_user_email(st.session_state)
+    col1, col2 = st.columns([5, 1])
+    col1.caption(f"Signed in as `{user_email}`")
+    if col2.button("Logout"):
+        st.session_state["auth_user"] = None
+        st.rerun()
+
+
+def _show_auth_screen() -> None:
+    st.subheader("Sign in to your account")
+    st.caption("Register once, then log in to access your private transaction history.")
+
+    tab_login, tab_register = st.tabs(["Login", "Register"])
+
+    with tab_login:
+        login_email = st.text_input("Email", key="login_email")
+        login_password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login", type="primary", key="login_button"):
+            email = normalize_email(login_email)
+            user = authenticate_user(email)
+            if not user or not verify_password(login_password, user["password_hash"]):
+                st.error("Invalid email or password.")
+            else:
+                st.session_state["auth_user"] = {"email": user["email"]}
+                st.success("Login successful.")
+                st.rerun()
+
+    with tab_register:
+        register_email = st.text_input("Email", key="register_email")
+        register_password = st.text_input("Password", type="password", key="register_password")
+        if st.button("Register", key="register_button"):
+            email = normalize_email(register_email)
+            if "@" not in email:
+                st.error("Please enter a valid email.")
+                return
+            if len(register_password) < 8:
+                st.error("Password must be at least 8 characters.")
+                return
+
+            created = create_user(email, hash_password(register_password))
+            if not created:
+                st.warning("Account already exists. Please log in instead.")
+            else:
+                st.success("Registration successful. Please log in.")
 
 
 def process_files(uploaded_files: list[UploadedFile]) -> list[ProcessedFile] | None:
@@ -176,7 +239,11 @@ def _show_review_and_save(categorized_df: pd.DataFrame) -> None:
         if st.button("💾 Save to MongoDB", type="primary"):
             try:
                 with st.spinner("Saving to MongoDB…"):
-                    count = save_transactions(edited_df)
+                    user_email = get_current_user_email(st.session_state)
+                    if not user_email:
+                        st.error("Please log in before saving.")
+                        return
+                    count = save_transactions(edited_df, user_email=user_email)
                 st.success(f"✅ {count} transaction(s) saved to MongoDB.")
                 del st.session_state["categorized_df"]
             except ValueError as e:

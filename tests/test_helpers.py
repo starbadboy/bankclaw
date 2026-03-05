@@ -18,10 +18,10 @@ def test_categorize_and_save_df_returns_saved_count():
     with patch("webapp.helpers.categorize_transactions", return_value=categorized_df) as mock_cat, patch(
         "webapp.helpers.save_transactions", return_value=1
     ) as mock_save:
-        count = categorize_and_save_df(df)
+        count = categorize_and_save_df(df, user_email="user@example.com")
 
     mock_cat.assert_called_once()
-    mock_save.assert_called_once()
+    mock_save.assert_called_once_with(categorized_df, user_email="user@example.com")
     assert count == 1
 
 
@@ -32,7 +32,7 @@ def test_categorize_and_save_df_passes_df_to_categorizer():
     with patch("webapp.helpers.categorize_transactions", return_value=categorized_df) as mock_cat, patch(
         "webapp.helpers.save_transactions", return_value=1
     ):
-        categorize_and_save_df(df)
+        categorize_and_save_df(df, user_email="user@example.com")
 
     called_df = mock_cat.call_args[0][0]
     assert list(called_df.columns) == list(df.columns)

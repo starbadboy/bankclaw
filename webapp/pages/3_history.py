@@ -4,6 +4,7 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
+from webapp.auth import require_authentication
 from webapp.repository import get_transactions_by_date_range
 
 # Load environment variables from .env file
@@ -11,6 +12,7 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
 
 def history_page() -> None:
+    current_user_email = require_authentication()
     st.set_page_config(page_title="Transaction History", layout="wide")
     st.title("📋 Transaction History")
     st.markdown("Browse transactions saved to MongoDB, filtered by date range.")
@@ -27,7 +29,11 @@ def history_page() -> None:
 
     if st.button("🔍 Load Transactions"):
         try:
-            df = get_transactions_by_date_range(str(start_date), str(end_date))
+            df = get_transactions_by_date_range(
+                str(start_date),
+                str(end_date),
+                user_email=current_user_email,
+            )
         except ValueError as e:
             st.error(f"Configuration error: {e}")
             return

@@ -32,7 +32,7 @@ def test_save_transactions_upserts_records():
     mock_db.__getitem__.return_value = mock_collection
 
     with patch("webapp.repository.get_db", return_value=mock_db):
-        count = save_transactions(df)
+        count = save_transactions(df, user_email="user@example.com")
 
     assert mock_collection.update_one.call_count == 2
     # Verify upsert=True was used
@@ -57,7 +57,7 @@ def test_get_transactions_by_date_range_returns_df():
     ]
 
     with patch("webapp.repository.get_db", return_value=mock_db):
-        result = get_transactions_by_date_range("2024-01-01", "2024-01-31")
+        result = get_transactions_by_date_range("2024-01-01", "2024-01-31", user_email="user@example.com")
 
     assert isinstance(result, pd.DataFrame)
     assert len(result) == 1
@@ -71,7 +71,7 @@ def test_get_transactions_returns_empty_df_when_no_records():
     mock_collection.find.return_value = []
 
     with patch("webapp.repository.get_db", return_value=mock_db):
-        result = get_transactions_by_date_range("2024-01-01", "2024-01-31")
+        result = get_transactions_by_date_range("2024-01-01", "2024-01-31", user_email="user@example.com")
 
     assert isinstance(result, pd.DataFrame)
     assert result.empty

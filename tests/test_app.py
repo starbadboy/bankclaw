@@ -35,7 +35,7 @@ def protected_file():
 
 
 def test_app(uploaded_file):
-    with patch("webapp.app.get_files") as get_files:
+    with patch("webapp.app.get_files") as get_files, patch("webapp.app.is_authenticated", return_value=True):
         get_files.return_value = [uploaded_file]
         df = app()
 
@@ -49,7 +49,7 @@ def test_app(uploaded_file):
 
 def test_unlock_protected(protected_file):
     os.environ["PDF_PASSWORDS"] = '["foobar123"]'
-    with patch("webapp.app.get_files") as get_files:
+    with patch("webapp.app.get_files") as get_files, patch("webapp.app.is_authenticated", return_value=True):
         get_files.return_value = [protected_file]
         df = app()
 

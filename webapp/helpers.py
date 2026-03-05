@@ -101,6 +101,6 @@ def show_df(df: pd.DataFrame) -> None:
     )
 
 
-def categorize_and_save_df(df: pd.DataFrame) -> int:
+def categorize_and_save_df(df: pd.DataFrame, user_email: str) -> int:
     categorized = categorize_transactions(df)
-    return save_transactions(categorized)
+    return save_transactions(categorized, user_email=user_email)
