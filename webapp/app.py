@@ -4,7 +4,7 @@ from monopoly.pdf import MissingPasswordError, PdfDocument
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from webapp.constants import APP_DESCRIPTION
-from webapp.helpers import create_df, parse_bank_statement, show_df
+from webapp.helpers import categorize_and_save_df, create_df, parse_bank_statement, show_df
 from webapp.logo import logo
 from webapp.models import ProcessedFile
 
@@ -31,6 +31,7 @@ def app() -> pd.DataFrame:
 
     if df is not None:
         show_df(df)
+        _show_save_button(df)
 
     return df
 
@@ -119,6 +120,18 @@ def get_files() -> list[UploadedFile]:
         label_visibility="hidden",
         accept_multiple_files=True,
     )
+
+
+def _show_save_button(df: pd.DataFrame) -> None:
+    if st.button("💾 Categorise & Save to MongoDB", type="primary"):
+        try:
+            with st.spinner("Categorising with AI and saving to MongoDB…"):
+                count = categorize_and_save_df(df)
+            st.success(f"✅ {count} transaction(s) saved to MongoDB.")
+        except ValueError as e:
+            st.error(f"Configuration error: {e}")
+        except Exception as e:  # pylint: disable=broad-except
+            st.error(f"Failed to save: {e}")
 
 
 if __name__ == "__main__":

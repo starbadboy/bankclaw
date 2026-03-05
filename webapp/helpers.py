@@ -9,7 +9,9 @@ from monopoly.pipeline import Pipeline
 from monopoly.statements.base import SafetyCheckError
 from pydantic import SecretStr
 
+from webapp.categorizer import categorize_transactions
 from webapp.models import ProcessedFile, TransactionMetadata
+from webapp.repository import save_transactions
 
 
 def build_pipeline(document: PdfDocument, password: str | None = None) -> tuple[Pipeline, PdfParser]:
@@ -97,3 +99,8 @@ def show_df(df: pd.DataFrame) -> None:
         data=csv,
         mime="text/csv",
     )
+
+
+def categorize_and_save_df(df: pd.DataFrame) -> int:
+    categorized = categorize_transactions(df)
+    return save_transactions(categorized)
