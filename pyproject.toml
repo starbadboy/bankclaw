@@ -11,6 +11,8 @@ dependencies = [
     "pdftotext>=3.0.0",
     "pymupdf>=1.26.0",
     "monopoly-core==0.19.6",
+    "pymongo>=4.9.0",
+    "openai>=1.0.0",
 ]
 name = "statement-sensei"
 version = "0.10.4"
