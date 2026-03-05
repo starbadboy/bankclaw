@@ -296,7 +296,7 @@ st.caption("Sourced from transactions saved to MongoDB.")
 
 date_col1, date_col2 = st.columns(2)
 with date_col1:
-    hist_start = st.date_input("From", value=date.today() - timedelta(days=365), key="hist_start")
+    hist_start = st.date_input("From", value=date.today() - timedelta(days=30), key="hist_start")
 with date_col2:
     hist_end = st.date_input("To", value=date.today(), key="hist_end")
 
