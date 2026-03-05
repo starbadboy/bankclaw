@@ -295,6 +295,13 @@ with date_col1:
 with date_col2:
     hist_end = st.date_input("To", value=date.today(), key="hist_end")
 
+# Clear cached data if date range has changed
+cached_range = st.session_state.get("hist_date_range")
+current_range = (str(hist_start), str(hist_end))
+if cached_range and cached_range != current_range:
+    st.session_state.pop("hist_df", None)
+    st.session_state.pop("hist_date_range", None)
+
 if hist_start > hist_end:
     st.error("'From' date must be before 'To' date.")
 else:
@@ -304,8 +311,11 @@ else:
             if hist_df.empty:
                 st.info("No transactions found for the selected date range.")
                 st.session_state.pop("hist_df", None)
+                st.session_state.pop("hist_date_range", None)
             else:
                 st.session_state["hist_df"] = hist_df
+                st.session_state["hist_date_range"] = current_range
+                st.rerun()
         except ValueError as e:
             st.error(f"Configuration error: {e}")
         except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
