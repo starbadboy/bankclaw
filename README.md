@@ -129,6 +129,24 @@ export MONGODB_DB_NAME="bankclaw"  # optional
 
 When both variables are set, a **"Categorise & Save to MongoDB"** button appears after processing PDFs. A **"3 History"** page lets you browse and filter saved transactions by date range.
 
+## Development
+
+### Running the Development Server
+
+```bash
+# Quick start (kills existing processes and starts fresh)
+./start.sh
+
+# Or manually with uv
+uv run streamlit run webapp/app.py
+```
+
+The app will be available at **http://localhost:8501**
+
+### Environment Setup
+
+Create a `.env` file in the project root with the required variables (see MongoDB + AI Categorisation section above).
+
 # Features
 - Supports uploading multiple bank statements
 - Allows unlocking of PDFs using user-provided credentials via the frontend
