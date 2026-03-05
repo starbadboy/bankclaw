@@ -137,7 +137,7 @@ def _show_categorise_button(df: pd.DataFrame) -> None:
             st.rerun()
         except ValueError as e:
             st.error(f"Configuration error: {e}")
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
             st.error(f"Categorisation failed: {e}")
 
 
@@ -175,7 +175,7 @@ def _show_review_and_save(categorized_df: pd.DataFrame) -> None:
                 del st.session_state["categorized_df"]
             except ValueError as e:
                 st.error(f"Configuration error: {e}")
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
                 st.error(f"Failed to save: {e}")
 
     with col2:
