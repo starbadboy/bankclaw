@@ -1,6 +1,6 @@
 # pylint: disable=no-name-in-module
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pandas as pd
@@ -60,3 +60,88 @@ def test_unlock_protected(protected_file):
     expected_df["date"] = pd.to_datetime(expected_df["date"])
 
     assert df.equals(expected_df)
+
+
+# ── helpers for new UI tests ──────────────────────────────────────────────────
+
+def _make_raw_df():
+    return pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB TAXI", "amount": -12.50, "bank": "DBS"},
+        {"date": "2024-01-16", "description": "NTUC", "amount": -30.00, "bank": "DBS"},
+    ])
+
+
+def _make_categorized_df():
+    df = _make_raw_df()
+    df["category"] = ["Transport", "Food & Dining"]
+    return df
+
+
+def _make_mock_st(*, button_returns=None, columns=True):
+    """Build a minimal st mock that supports spinner context manager and columns unpacking."""
+    mock_st = MagicMock()
+    if button_returns is not None:
+        mock_st.button.side_effect = button_returns
+    if columns:
+        mock_st.columns.return_value = [MagicMock(), MagicMock()]
+    return mock_st
+
+
+# ── _show_categorise_button ───────────────────────────────────────────────────
+
+def test_categorise_button_calls_categorize_transactions():
+    raw_df = _make_raw_df()
+    cat_df = _make_categorized_df()
+
+    mock_st = _make_mock_st(button_returns=[True])
+    mock_st.session_state = {}
+
+    with patch("webapp.app.st", mock_st), \
+         patch("webapp.app.categorize_transactions", return_value=cat_df) as mock_cat:
+        from webapp.app import _show_categorise_button
+        _show_categorise_button(raw_df)
+
+    mock_cat.assert_called_once()
+
+
+def test_categorise_button_not_clicked_does_not_call_categorize():
+    raw_df = _make_raw_df()
+
+    mock_st = _make_mock_st(button_returns=[False])
+
+    with patch("webapp.app.st", mock_st), \
+         patch("webapp.app.categorize_transactions") as mock_cat:
+        from webapp.app import _show_categorise_button
+        _show_categorise_button(raw_df)
+
+    mock_cat.assert_not_called()
+
+
+# ── _show_review_and_save ─────────────────────────────────────────────────────
+
+def test_review_and_save_calls_save_transactions_on_click():
+    cat_df = _make_categorized_df()
+
+    mock_st = _make_mock_st(button_returns=[True, False])
+    mock_st.data_editor.return_value = cat_df
+
+    with patch("webapp.app.st", mock_st), \
+         patch("webapp.app.save_transactions", return_value=2) as mock_save:
+        from webapp.app import _show_review_and_save
+        _show_review_and_save(cat_df)
+
+    mock_save.assert_called_once()
+
+
+def test_review_and_save_does_not_save_when_not_clicked():
+    cat_df = _make_categorized_df()
+
+    mock_st = _make_mock_st(button_returns=[False, False])
+    mock_st.data_editor.return_value = cat_df
+
+    with patch("webapp.app.st", mock_st), \
+         patch("webapp.app.save_transactions") as mock_save:
+        from webapp.app import _show_review_and_save
+        _show_review_and_save(cat_df)
+
+    mock_save.assert_not_called()

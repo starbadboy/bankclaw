@@ -3,10 +3,12 @@ import streamlit as st
 from monopoly.pdf import MissingPasswordError, PdfDocument
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
+from webapp.categorizer import VALID_CATEGORIES, categorize_transactions
 from webapp.constants import APP_DESCRIPTION
-from webapp.helpers import categorize_and_save_df, create_df, parse_bank_statement, show_df
+from webapp.helpers import create_df, parse_bank_statement, show_df
 from webapp.logo import logo
 from webapp.models import ProcessedFile
+from webapp.repository import save_transactions
 
 # number of files that need to be added before progress bar appears
 PBAR_MIN_FILES = 4
@@ -31,7 +33,11 @@ def app() -> pd.DataFrame:
 
     if df is not None:
         show_df(df)
-        _show_save_button(df)
+        categorized_df = st.session_state.get("categorized_df")
+        if categorized_df is None:
+            _show_categorise_button(df)
+        else:
+            _show_review_and_save(categorized_df)
 
     return df
 
@@ -122,16 +128,60 @@ def get_files() -> list[UploadedFile]:
     )
 
 
-def _show_save_button(df: pd.DataFrame) -> None:
-    if st.button("💾 Categorise & Save to MongoDB", type="primary"):
+def _show_categorise_button(df: pd.DataFrame) -> None:
+    if st.button("🤖 Categorise with AI", type="primary"):
         try:
-            with st.spinner("Categorising with AI and saving to MongoDB…"):
-                count = categorize_and_save_df(df)
-            st.success(f"✅ {count} transaction(s) saved to MongoDB.")
+            with st.spinner("Asking DeepSeek to categorise your transactions…"):
+                categorized = categorize_transactions(df)
+            st.session_state["categorized_df"] = categorized
+            st.rerun()
         except ValueError as e:
             st.error(f"Configuration error: {e}")
         except Exception as e:  # pylint: disable=broad-except
-            st.error(f"Failed to save: {e}")
+            st.error(f"Categorisation failed: {e}")
+
+
+def _show_review_and_save(categorized_df: pd.DataFrame) -> None:
+    st.subheader("Review & Edit Categories")
+    st.caption("Change any category using the dropdown, then click Save.")
+
+    edited_df = st.data_editor(
+        categorized_df,
+        column_config={
+            "category": st.column_config.SelectboxColumn(
+                label="Category",
+                options=VALID_CATEGORIES,
+                required=True,
+            ),
+            "date": st.column_config.TextColumn("Date", disabled=True),
+            "description": st.column_config.TextColumn("Description", disabled=True),
+            "amount": st.column_config.NumberColumn("Amount", format="%.2f", disabled=True),
+            "bank": st.column_config.TextColumn("Bank", disabled=True),
+        },
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="category_editor",
+    )
+
+    col1, col2 = st.columns([1, 4])
+
+    with col1:
+        if st.button("💾 Save to MongoDB", type="primary"):
+            try:
+                with st.spinner("Saving to MongoDB…"):
+                    count = save_transactions(edited_df)
+                st.success(f"✅ {count} transaction(s) saved to MongoDB.")
+                del st.session_state["categorized_df"]
+            except ValueError as e:
+                st.error(f"Configuration error: {e}")
+            except Exception as e:  # pylint: disable=broad-except
+                st.error(f"Failed to save: {e}")
+
+    with col2:
+        if st.button("🔄 Reset & Re-categorise"):
+            del st.session_state["categorized_df"]
+            st.rerun()
 
 
 if __name__ == "__main__":
