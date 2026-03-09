@@ -18,6 +18,26 @@ def make_df():
     ])
 
 
+def make_category_detail_df():
+    rows = [
+        {"date": "2024-01-01", "description": "SALARY", "amount": 5000.00, "bank": "DBS", "category": "Income"},
+        {"date": "2024-01-02", "description": "REFUND", "amount": 15.00, "bank": "DBS", "category": "Transport"},
+        {"date": "2024-01-03", "description": "LUNCH", "amount": -25.00, "bank": "DBS", "category": "Food & Dining"},
+    ]
+    transport_amounts = [-5.0, -120.0, -12.5, -80.0, -60.0, -45.0, -33.0, -150.0, -22.0, -95.0, -41.0, -10.0]
+    for index, amount in enumerate(transport_amounts, start=1):
+        rows.append(
+            {
+                "date": f"2024-02-{index:02d}",
+                "description": f"TRANSPORT {index}",
+                "amount": amount,
+                "bank": "DBS",
+                "category": "Transport",
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def test_compute_monthly_cash_flow_income():
     df = make_df()
     result = compute_monthly_cash_flow(df)
@@ -51,6 +71,34 @@ def test_compute_category_expenses_sums_correctly():
     assert result["Food & Dining"] == pytest.approx(80.00)
 
 
+def test_get_top_category_transactions_returns_top_10_negative_transactions_sorted_by_absolute_amount():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        result = module_globals["_get_top_category_transactions"](make_category_detail_df(), "Transport")
+
+    assert list(result["description"]) == [
+        "TRANSPORT 8",
+        "TRANSPORT 2",
+        "TRANSPORT 10",
+        "TRANSPORT 4",
+        "TRANSPORT 5",
+        "TRANSPORT 6",
+        "TRANSPORT 11",
+        "TRANSPORT 7",
+        "TRANSPORT 9",
+        "TRANSPORT 3",
+    ]
+    assert list(result["amount"]) == [-150.0, -120.0, -95.0, -80.0, -60.0, -45.0, -41.0, -33.0, -22.0, -12.5]
+
+
 def _columns_factory(spec):
     if isinstance(spec, int):
         return [MagicMock() for _ in range(spec)]
@@ -70,6 +118,7 @@ def test_show_dashboard_renders_category_exclusion_multiselect():
          patch("streamlit.button", return_value=False), \
          patch("streamlit.multiselect", return_value=[]) as multiselect_mock, \
          patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]), \
          patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
         module_globals = runpy.run_path(str(page_path))
         module_globals["show_mongodb_dashboard"](make_df())
@@ -93,14 +142,18 @@ def test_show_dashboard_keeps_full_donut_when_no_categories_are_excluded():
          patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
          patch("streamlit.button", return_value=False), \
          patch("streamlit.multiselect", return_value=[]), \
-         patch("streamlit.plotly_chart") as plotly_chart_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]) as plotly_events_mock, \
          patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
         module_globals = runpy.run_path(str(page_path))
         module_globals["show_mongodb_dashboard"](make_df())
 
-    donut_fig = plotly_chart_mock.call_args_list[-1].args[0]
+    donut_fig = plotly_events_mock.call_args.args[0]
     assert list(donut_fig.data[0].labels) == ["Food & Dining", "Entertainment", "Transport"]
     assert list(donut_fig.data[0].values) == [80.0, 18.0, 12.5]
+    donut_json = donut_fig.to_json()
+    assert '"values":[80.0,18.0,12.5]' in donut_json
+    assert '"dtype"' not in donut_json
 
 
 def test_show_dashboard_filters_excluded_categories_from_donut_chart():
@@ -113,12 +166,13 @@ def test_show_dashboard_filters_excluded_categories_from_donut_chart():
          patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
          patch("streamlit.button", return_value=False), \
          patch("streamlit.multiselect", return_value=["Food & Dining"]), \
-         patch("streamlit.plotly_chart") as plotly_chart_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]) as plotly_events_mock, \
          patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
         module_globals = runpy.run_path(str(page_path))
         module_globals["show_mongodb_dashboard"](make_df())
 
-    donut_fig = plotly_chart_mock.call_args_list[-1].args[0]
+    donut_fig = plotly_events_mock.call_args.args[0]
     assert list(donut_fig.data[0].labels) == ["Entertainment", "Transport"]
     assert list(donut_fig.data[0].values) == [18.0, 12.5]
 
@@ -134,19 +188,153 @@ def test_show_dashboard_shows_empty_state_when_all_categories_are_excluded():
          patch("streamlit.button", return_value=False), \
          patch("streamlit.multiselect", return_value=["Food & Dining", "Entertainment", "Transport"]), \
          patch("streamlit.info") as info_mock, \
-         patch("streamlit.plotly_chart") as plotly_chart_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events") as plotly_events_mock, \
          patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
         module_globals = runpy.run_path(str(page_path))
         info_mock.reset_mock()
-        plotly_chart_mock.reset_mock()
+        plotly_events_mock.reset_mock()
         module_globals["show_mongodb_dashboard"](make_df())
 
     info_mock.assert_called_once_with("No categories left to display. Clear one or more exclusions.")
-    pie_chart_calls = [
-        call for call in plotly_chart_mock.call_args_list
-        if any(trace.type == "pie" for trace in call.args[0].data)
-    ]
-    assert pie_chart_calls == []
+    assert plotly_events_mock.call_args_list == []
+
+
+def test_show_dashboard_does_not_render_category_detail_panel_before_selection():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    columns_mock = MagicMock(side_effect=_columns_factory)
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown") as markdown_mock, \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", columns_mock), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]), \
+         patch("streamlit.rerun") as rerun_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]) as plotly_events_mock, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["st"].session_state = {}
+        module_globals["show_mongodb_dashboard"](make_category_detail_df())
+
+    rendered = " ".join(call.args[0] for call in markdown_mock.call_args_list if call.args)
+    assert "Top 10 Transactions" not in rendered
+    assert plotly_events_mock.call_count == 1
+    assert plotly_events_mock.call_args.kwargs["click_event"] is True
+    assert plotly_events_mock.call_args.kwargs["hover_event"] is True
+    assert plotly_events_mock.call_args.kwargs["key"] == "category_breakdown_chart"
+    assert [3, 2] not in [call.args[0] for call in columns_mock.call_args_list]
+    rerun_mock.assert_not_called()
+
+
+def test_show_dashboard_hover_updates_selected_category_and_requests_rerun():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown") as markdown_mock, \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]), \
+         patch("streamlit.rerun") as rerun_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[{"pointNumber": 0}]), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["st"].session_state = {}
+        module_globals["show_mongodb_dashboard"](make_category_detail_df())
+
+    rendered = " ".join(call.args[0] for call in markdown_mock.call_args_list if call.args)
+    assert "Top 10 Transactions in Transport" not in rendered
+    assert module_globals["st"].session_state["category_breakdown_selected_category"] == "Transport"
+    rerun_mock.assert_called_once()
+
+
+def test_show_dashboard_keeps_category_detail_panel_when_no_new_hover_event():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown") as markdown_mock, \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]), \
+         patch("streamlit.rerun") as rerun_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["st"].session_state = {"category_breakdown_selected_category": "Transport"}
+        module_globals["show_mongodb_dashboard"](make_category_detail_df())
+
+    rendered = " ".join(call.args[0] for call in markdown_mock.call_args_list if call.args)
+    assert "Top 10 Transactions in Transport" in rendered
+    assert "TRANSPORT 8" in rendered
+    assert "TRANSPORT 12" not in rendered
+    rerun_mock.assert_not_called()
+
+
+def test_show_dashboard_escapes_html_sensitive_panel_content():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    sensitive_df = pd.DataFrame([
+        {
+            "date": "2024-03-01",
+            "description": "<b>unsafe & cafe</b>",
+            "amount": -42.0,
+            "bank": "DBS <Main> & Co",
+            "category": "Food <Fun> & Dining",
+        }
+    ])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown") as markdown_mock, \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["st"].session_state = {"category_breakdown_selected_category": "Food <Fun> & Dining"}
+        module_globals["show_mongodb_dashboard"](sensitive_df)
+
+    rendered = " ".join(call.args[0] for call in markdown_mock.call_args_list if call.args)
+    assert "Top 10 Transactions in Food &lt;Fun&gt; &amp; Dining" in rendered
+    assert "&lt;b&gt;unsafe &amp; cafe&lt;/b&gt;" in rendered
+    assert "DBS &lt;Main&gt; &amp; Co" in rendered
+    assert "Top 10 Transactions in Food <Fun> & Dining" not in rendered
+    assert "<b>unsafe & cafe</b>" not in rendered
+    assert "DBS <Main> & Co" not in rendered
+
+
+def test_show_dashboard_does_not_indent_detail_rows_as_literal_html_blocks():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown") as markdown_mock, \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["st"].session_state = {"category_breakdown_selected_category": "Transport"}
+        module_globals["show_mongodb_dashboard"](make_category_detail_df())
+
+    rendered = " ".join(call.args[0] for call in markdown_mock.call_args_list if call.args)
+    assert '\n            <div class="category-detail-item">' not in rendered
+    assert '\n                <div class="category-detail-item-description">' not in rendered
 
 
 def test_visualizations_page_renders_modern_workspace_shell():
@@ -176,6 +364,7 @@ def test_visualizations_page_renders_structured_analytics_sections():
          patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
          patch("streamlit.button", return_value=False), \
          patch("streamlit.plotly_chart"), \
+         patch("streamlit_plotly_events.plotly_events", return_value=[]), \
          patch("webapp.repository.get_transactions_by_date_range", return_value=make_df()):
         runpy.run_path(str(page_path))
 

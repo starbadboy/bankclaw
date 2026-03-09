@@ -1,9 +1,11 @@
 from datetime import date, timedelta
+from html import escape
 from pathlib import Path
 import pandas as pd
 import plotly.graph_objs as go
 import streamlit as st
 from dotenv import load_dotenv
+from streamlit_plotly_events import plotly_events
 
 from webapp.auth import clear_auth_query_token, require_authentication
 from webapp.categorizer import VALID_CATEGORIES, categorize_transactions
@@ -115,6 +117,49 @@ _KPI_CSS = """
     padding: 12px 14px;
     margin-bottom: 10px;
 }
+.category-detail-panel {
+    border: 1px solid #dbeafe;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+}
+.category-detail-panel h4 {
+    margin: 0 0 6px 0;
+    color: #0f172a;
+    font-size: 1rem;
+}
+.category-detail-panel p {
+    margin: 0 0 12px 0;
+    color: #64748b;
+    font-size: 0.9rem;
+}
+.category-detail-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid #e2e8f0;
+}
+.category-detail-item:first-of-type {
+    border-top: none;
+}
+.category-detail-item-main {
+    min-width: 0;
+}
+.category-detail-item-description {
+    color: #0f172a;
+    font-weight: 600;
+}
+.category-detail-item-meta {
+    color: #64748b;
+    font-size: 0.85rem;
+}
+.category-detail-item-amount {
+    color: #F63366;
+    font-weight: 700;
+    white-space: nowrap;
+}
 </style>
 """
 
@@ -209,12 +254,14 @@ def _show_pl_chart(monthly: pd.DataFrame) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
-def _show_category_donut(cat_expenses: pd.Series) -> None:
+def _show_category_donut(cat_expenses: pd.Series) -> list[dict]:
+    labels = cat_expenses.index.tolist()
+    values = cat_expenses.astype(float).tolist()
     fig = go.Figure(
         data=[
             go.Pie(
-                labels=cat_expenses.index,
-                values=cat_expenses.values,
+                labels=labels,
+                values=values,
                 hole=0.55,
                 marker={"colors": _CATEGORY_COLORS[: len(cat_expenses)]},
                 textinfo="label+percent",
@@ -229,10 +276,97 @@ def _show_category_donut(cat_expenses: pd.Series) -> None:
             paper_bgcolor="#fcfdff",
         ),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    return plotly_events(
+        fig,
+        click_event=True,
+        hover_event=True,
+        key="category_breakdown_chart",
+    )
 
 
-def _show_category_breakdown(cat_expenses: pd.Series) -> None:
+def _get_top_category_transactions(df: pd.DataFrame, selected_category: str) -> pd.DataFrame:
+    filtered = df.loc[(df["category"] == selected_category) & (df["amount"] < 0)].copy()
+    if filtered.empty:
+        return filtered
+    filtered["_abs_amount"] = filtered["amount"].abs()
+    return (
+        filtered.sort_values("_abs_amount", ascending=False)
+        .head(10)
+        .drop(columns="_abs_amount")
+    )
+
+
+def _get_selected_category_from_points(cat_expenses: pd.Series, chart_points: list[dict]) -> str | None:
+    if not isinstance(chart_points, list) or not chart_points:
+        return None
+    point = chart_points[0]
+    if not isinstance(point, dict):
+        return None
+
+    labels = cat_expenses.index.tolist()
+    label = point.get("label")
+    if isinstance(label, str) and label in labels:
+        return label
+
+    for index_key in ("pointNumber", "pointIndex"):
+        selected_index = point.get(index_key)
+        if isinstance(selected_index, int) and 0 <= selected_index < len(labels):
+            return str(labels[selected_index])
+
+    return None
+
+
+def _get_selected_category() -> str | None:
+    stored_category = st.session_state.get("category_breakdown_selected_category")
+    return stored_category if isinstance(stored_category, str) else None
+
+
+def _render_category_detail_panel(df: pd.DataFrame, selected_category: str) -> None:
+    top_transactions = _get_top_category_transactions(df, selected_category)
+    safe_selected_category = escape(selected_category)
+    detail_items = []
+    for row in top_transactions.itertuples(index=False):
+        txn_date = pd.to_datetime(row.date, errors="coerce")
+        formatted_date = txn_date.strftime("%Y-%m-%d") if not pd.isna(txn_date) else ""
+        safe_description = escape(str(row.description))
+        safe_bank = escape(str(row.bank))
+        safe_date = escape(formatted_date)
+        detail_items.append(
+            (
+                '<div class="category-detail-item">'
+                '<div class="category-detail-item-main">'
+                f'<div class="category-detail-item-description">{safe_description}</div>'
+                f'<div class="category-detail-item-meta">{safe_date} • {safe_bank}</div>'
+                "</div>"
+                f'<div class="category-detail-item-amount">-${abs(row.amount):,.2f}</div>'
+                "</div>"
+            )
+        )
+
+    if not detail_items:
+        detail_items.append(
+            (
+                '<div class="category-detail-item">'
+                '<div class="category-detail-item-main">'
+                '<div class="category-detail-item-description">No expense transactions found.</div>'
+                "</div>"
+                "</div>"
+            )
+        )
+
+    st.markdown(
+        (
+            '<div class="category-detail-panel">'
+            f"<h4>Top 10 Transactions in {safe_selected_category}</h4>"
+            "<p>Largest expense transactions for the selected category.</p>"
+            f"{''.join(detail_items)}"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _show_category_breakdown(df: pd.DataFrame, cat_expenses: pd.Series) -> None:
     st.markdown(
         """
         <div class="insights-section-shell">
@@ -250,12 +384,32 @@ def _show_category_breakdown(cat_expenses: pd.Series) -> None:
         key="category_breakdown_excluded_categories",
     )
     filtered_cat_expenses = cat_expenses[~cat_expenses.index.isin(excluded_categories)]
-    st.markdown('<div class="insights-chart-shell">', unsafe_allow_html=True)
-    if filtered_cat_expenses.empty:
-        st.info("No categories left to display. Clear one or more exclusions.")
+    selected_category = _get_selected_category()
+    show_detail_panel = bool(selected_category and selected_category in filtered_cat_expenses.index)
+
+    if show_detail_panel:
+        chart_col, detail_col = st.columns([3, 2])
     else:
-        _show_category_donut(filtered_cat_expenses)
-    st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
+        chart_col = st.container()
+        detail_col = None
+
+    chart_points = []
+    with chart_col:
+        st.markdown('<div class="insights-chart-shell">', unsafe_allow_html=True)
+        if filtered_cat_expenses.empty:
+            st.info("No categories left to display. Clear one or more exclusions.")
+        else:
+            chart_points = _show_category_donut(filtered_cat_expenses)
+        st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
+
+    selected_from_points = _get_selected_category_from_points(filtered_cat_expenses, chart_points)
+    if selected_from_points is not None and selected_from_points != selected_category:
+        st.session_state["category_breakdown_selected_category"] = selected_from_points
+        st.rerun()
+
+    if show_detail_panel and detail_col is not None:
+        with detail_col:
+            _render_category_detail_panel(df, selected_category)
 
 
 def show_mongodb_dashboard(df: pd.DataFrame) -> None:
@@ -305,7 +459,7 @@ def show_mongodb_dashboard(df: pd.DataFrame) -> None:
         st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
     with col_right:
         if not cat_expenses.empty:
-            _show_category_breakdown(cat_expenses)
+            _show_category_breakdown(df, cat_expenses)
 
 
 def _render_supported_banks_thumbnail() -> None:
