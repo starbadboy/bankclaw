@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 
-def test_history_page_removes_workspace_header_and_filter_box():
+def test_history_page_renders_workspace_header_and_filter_shell():
     page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
 
     with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
@@ -19,8 +19,9 @@ def test_history_page_removes_workspace_header_and_filter_box():
         module_globals["history_page"]()
 
     rendered = " ".join(call.args[0] for call in mock_markdown.call_args_list if call.args)
-    assert "Transaction History Workspace" not in rendered
-    assert "history-filter-shell" not in rendered
+    assert '<section class="history-shell">' in rendered
+    assert "Transaction History Workspace" in rendered
+    assert '<div class="history-filter-shell">' in rendered
 
 
 def test_history_page_auto_saves_category_changes_without_button():

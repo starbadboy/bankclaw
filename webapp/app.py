@@ -34,22 +34,78 @@ PBAR_MIN_FILES = 4
 
 _MODERN_UI_CSS = """
 <style>
-.ss-hero {
-    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    padding: 18px 20px;
+div[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at top right, rgba(47, 107, 255, 0.22), transparent 28%),
+        radial-gradient(circle at top left, rgba(0, 214, 201, 0.14), transparent 24%),
+        linear-gradient(180deg, #071120 0%, #0a1628 52%, #0d1b30 100%);
+}
+.ss-shell {
+    position: relative;
+    border: 1px solid rgba(129, 177, 255, 0.18);
+    border-radius: 24px;
+    padding: 24px;
     margin: 8px 0 18px 0;
+    background: linear-gradient(145deg, rgba(8, 18, 36, 0.96), rgba(13, 27, 48, 0.92));
+    box-shadow: 0 22px 64px rgba(2, 6, 23, 0.45);
+    overflow: hidden;
+}
+.ss-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, rgba(47, 107, 255, 0.14), transparent 42%, rgba(0, 214, 201, 0.08));
+    pointer-events: none;
+}
+.ss-hero {
+    position: relative;
+    z-index: 1;
+    padding: 6px 2px 2px 2px;
+}
+.ss-eyebrow {
+    margin: 0 0 10px 0;
+    color: #7dd3fc;
+    text-transform: uppercase;
+    letter-spacing: 0.24em;
+    font-size: 0.72rem;
+    font-weight: 700;
 }
 .ss-hero h2 {
     margin: 0;
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: #0f172a;
+    font-size: 2rem;
+    line-height: 1.1;
+    font-weight: 800;
+    color: #f8fbff;
 }
 .ss-hero p {
     margin: 8px 0 0 0;
-    color: #475569;
+    color: #bfd2f8;
+    max-width: 42rem;
+}
+.ss-kpi-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 18px;
+}
+.ss-kpi-card {
+    min-width: 148px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(129, 177, 255, 0.14);
+    background: linear-gradient(180deg, rgba(13, 25, 46, 0.92), rgba(9, 18, 34, 0.9));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+.ss-kpi-card strong {
+    display: block;
+    font-size: 1.15rem;
+    color: #f8fbff;
+}
+.ss-kpi-card span {
+    font-size: 0.8rem;
+    color: #8da6d1;
 }
 .workflow {
     display: flex;
@@ -123,10 +179,18 @@ def _inject_modern_css() -> None:
 def _render_hero() -> None:
     st.markdown(
         """
-        <div class="ss-hero">
-            <h2>Convert statements with confidence</h2>
-            <p>Upload statement PDFs, review AI categories, and save clean records for long-term insights.</p>
-        </div>
+        <section class="ss-shell">
+            <div class="ss-hero">
+                <p class="ss-eyebrow">Statement Intelligence</p>
+                <h2>Control your statement workflow</h2>
+                <p>Upload, categorise, review, and explore transactions in a dashboard that feels calm, premium, and high-signal.</p>
+            </div>
+            <div class="ss-kpi-row">
+                <div class="ss-kpi-card"><strong>Upload</strong><span>Bring PDFs into one guided flow.</span></div>
+                <div class="ss-kpi-card"><strong>Review</strong><span>Check AI categories before saving.</span></div>
+                <div class="ss-kpi-card"><strong>Explore</strong><span>Use history and insights after save.</span></div>
+            </div>
+        </section>
         """,
         unsafe_allow_html=True,
     )

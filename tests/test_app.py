@@ -171,8 +171,20 @@ def test_inject_modern_css_renders_style_block():
 
     assert mock_st.markdown.called
     rendered = mock_st.markdown.call_args[0][0]
-    assert ".ss-hero" in rendered
-    assert ".workflow-step" in rendered
+    assert ".ss-shell" in rendered
+    assert ".ss-kpi-card" in rendered
+
+
+def test_render_hero_uses_dashboard_message():
+    mock_st = MagicMock()
+
+    with patch("webapp.app.st", mock_st):
+        from webapp.app import _render_hero
+        _render_hero()
+
+    rendered = " ".join(call.args[0] for call in mock_st.markdown.call_args_list if call.args)
+    assert "Control your statement workflow" in rendered
+    assert "Statement Intelligence" in rendered
 
 
 def test_render_workflow_marks_upload_step_as_current_when_no_data():

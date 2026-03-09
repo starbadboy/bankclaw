@@ -12,6 +12,49 @@ from webapp.repository import delete_transactions, get_transactions_by_date_rang
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 _DELETE_COL = "_delete"
 _DELETE_MARKS_KEY = "history_delete_marks"
+_HISTORY_CSS = """
+<style>
+div[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at top right, rgba(47, 107, 255, 0.16), transparent 28%),
+        radial-gradient(circle at top left, rgba(0, 214, 201, 0.08), transparent 26%),
+        linear-gradient(180deg, #071120 0%, #0a1628 52%, #0d1b30 100%);
+}
+.history-shell {
+    border: 1px solid rgba(129, 177, 255, 0.16);
+    border-radius: 24px;
+    padding: 22px 24px;
+    margin-bottom: 16px;
+    background: linear-gradient(145deg, rgba(8, 18, 36, 0.96), rgba(13, 27, 48, 0.92));
+    box-shadow: 0 24px 64px rgba(2, 6, 23, 0.42);
+}
+.history-shell strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #7dd3fc;
+    font-size: 0.76rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+.history-shell h2 {
+    margin: 0 0 6px 0;
+    color: #f8fbff;
+    font-size: 1.7rem;
+}
+.history-shell p {
+    margin: 0;
+    color: #bcd2f7;
+}
+.history-filter-shell,
+.history-results-shell {
+    border: 1px solid rgba(129, 177, 255, 0.14);
+    border-radius: 18px;
+    padding: 14px 16px 12px 16px;
+    background: linear-gradient(180deg, rgba(13, 25, 46, 0.92), rgba(9, 18, 34, 0.90));
+    margin-bottom: 14px;
+}
+</style>
+"""
 
 def _build_row_mask(df, row):  # noqa: ANN001
     return (
@@ -123,8 +166,27 @@ def _fetch_history(start_date: date, end_date: date, user_email: str) -> bool:
 def history_page() -> None:
     current_user_email = require_authentication()
     st.set_page_config(page_title="Transaction History", layout="wide")
+    st.markdown(_HISTORY_CSS, unsafe_allow_html=True)
     _render_account_top_right(current_user_email)
-    st.markdown("### Transaction History")
+    st.markdown(
+        """
+        <section class="history-shell">
+            <strong>Transaction History Workspace</strong>
+            <h2>Review and maintain saved transactions</h2>
+            <p>Filter historical records, make category corrections, and export clean datasets from one dashboard surface.</p>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        <div class="history-filter-shell">
+            <strong style="display:block; margin-bottom:6px; color:#7dd3fc; letter-spacing:0.18em; text-transform:uppercase; font-size:0.74rem;">Filter Range</strong>
+            <p style="margin:0; color:#8da6d1;">Choose the time window you want to inspect before loading or exporting transactions.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.caption("Filter by date range to inspect and export your transaction records.")
 
     col1, col2 = st.columns(2)
@@ -146,7 +208,7 @@ def history_page() -> None:
         st.info("No transactions found for the selected date range.")
         return
 
-    st.markdown(f"### Results ({len(df)} transactions)")
+    st.markdown(f'<div class="history-results-shell"><strong>Results</strong><p>{len(df)} transactions</p></div>', unsafe_allow_html=True)
     categories = ["All"] + sorted(df["category"].unique().tolist())
     selected_cat = st.selectbox("Filter by category", options=categories)
     df = df[df["category"] == selected_cat].copy() if selected_cat != "All" else df.copy()

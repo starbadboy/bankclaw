@@ -2,10 +2,10 @@
 gatherUsageStats = false
 
 [theme]
-primaryColor="#2563EB"
-backgroundColor="#F8FAFC"
-secondaryBackgroundColor="#EEF2FF"
-textColor="#0F172A"
+primaryColor="#2F6BFF"
+backgroundColor="#071120"
+secondaryBackgroundColor="#0D1A2B"
+textColor="#E5F0FF"
 
 [server]
 fileWatcherType = "poll"

@@ -71,6 +71,29 @@ def test_compute_category_expenses_sums_correctly():
     assert result["Food & Dining"] == pytest.approx(80.00)
 
 
+def test_cash_flow_chart_uses_dark_dashboard_palette():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    monthly = compute_monthly_cash_flow(make_df())
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        plotly_chart_mock = MagicMock()
+        module_globals["st"].plotly_chart = plotly_chart_mock
+        module_globals["_show_cash_flow_chart"](monthly)
+
+    chart = plotly_chart_mock.call_args.args[0]
+    assert chart.layout.plot_bgcolor == "#09111f"
+    assert chart.layout.paper_bgcolor == "#09111f"
+    assert chart.layout.yaxis.gridcolor == "#1f3047"
+    assert chart.data[2].line.color == "#7dd3fc"
+
+
 def test_get_top_category_transactions_returns_top_10_negative_transactions_sorted_by_absolute_amount():
     page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
 
@@ -350,8 +373,9 @@ def test_visualizations_page_renders_modern_workspace_shell():
         runpy.run_path(str(page_path))
 
     rendered = " ".join(call.args[0] for call in mock_markdown.call_args_list if call.args)
-    assert "Insights Workspace" not in rendered
-    assert '<div class="insights-filter-shell' not in rendered
+    assert "Insights Workspace" in rendered
+    assert '<div class="viz-toolbar-shell' in rendered
+    assert '<section class="viz-shell' in rendered
 
 
 def test_visualizations_page_renders_structured_analytics_sections():
@@ -366,12 +390,13 @@ def test_visualizations_page_renders_structured_analytics_sections():
          patch("streamlit.plotly_chart"), \
          patch("streamlit_plotly_events.plotly_events", return_value=[]), \
          patch("webapp.repository.get_transactions_by_date_range", return_value=make_df()):
-        runpy.run_path(str(page_path))
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["show_mongodb_dashboard"](make_df())
 
     rendered = " ".join(call.args[0] for call in mock_markdown.call_args_list if call.args)
-    assert "insights-control-shell" in rendered
-    assert "insights-section-shell" in rendered
-    assert "insights-chart-shell" in rendered
+    assert '<div class="insights-section-shell">' in rendered
+    assert "Primary Trend" in rendered
+    assert '<div class="insights-chart-shell">' in rendered
 
 
 def test_visualizations_page_uses_last_year_default_and_shows_upload_cta_when_empty():

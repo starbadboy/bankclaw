@@ -37,6 +37,8 @@ _CATEGORY_COLORS = [
 ]
 _HOVERINFO_TEXT_NAME = "text+name"
 _HTML_DIV_CLOSE = "</div>"
+_DARK_CHART_BG = "#09111f"
+_DARK_GRID = "#1f3047"
 
 def _get_manual_category_changes(original_df: pd.DataFrame, edited_df: pd.DataFrame) -> pd.DataFrame:
     changed_rows = edited_df.loc[edited_df["category"] != original_df["category"]].copy()
@@ -47,62 +49,114 @@ def _get_manual_category_changes(original_df: pd.DataFrame, edited_df: pd.DataFr
 
 _KPI_CSS = """
 <style>
+div[data-testid="stAppViewContainer"] {
+    background:
+        radial-gradient(circle at top right, rgba(47, 107, 255, 0.18), transparent 28%),
+        radial-gradient(circle at top left, rgba(0, 214, 201, 0.10), transparent 26%),
+        linear-gradient(180deg, #071120 0%, #0a1628 52%, #0d1b30 100%);
+}
+.viz-shell {
+    border: 1px solid rgba(129, 177, 255, 0.16);
+    border-radius: 24px;
+    padding: 22px 24px;
+    margin-bottom: 16px;
+    background: linear-gradient(145deg, rgba(8, 18, 36, 0.96), rgba(13, 27, 48, 0.92));
+    box-shadow: 0 24px 64px rgba(2, 6, 23, 0.42);
+}
+.viz-shell h2 {
+    margin: 0 0 6px 0;
+    color: #f8fbff;
+    font-size: 1.8rem;
+}
+.viz-shell p {
+    margin: 0;
+    color: #bcd2f7;
+}
+.viz-toolbar-shell,
 .insights-shell {
-    background: linear-gradient(145deg, #f8fafc 0%, #eef2ff 100%);
-    border: 1px solid #dbeafe;
-    border-radius: 16px;
-    padding: 20px;
+    background: linear-gradient(145deg, rgba(8, 18, 36, 0.96), rgba(13, 27, 48, 0.92));
+    border: 1px solid rgba(129, 177, 255, 0.16);
+    border-radius: 20px;
+    padding: 18px 20px;
     margin-bottom: 12px;
 }
+.viz-toolbar-shell {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: end;
+}
+.viz-toolbar-shell strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #7dd3fc;
+    font-size: 0.76rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+.viz-toolbar-shell h3 {
+    margin: 0;
+    color: #f8fbff;
+    font-size: 1.25rem;
+}
+.viz-toolbar-shell span {
+    color: #91a7cf;
+    font-size: 0.9rem;
+}
+.viz-filter-shell,
 .insights-filter-shell {
-    border: 1px solid #e2e8f0;
-    border-radius: 14px;
-    background: #ffffff;
+    border: 1px solid rgba(129, 177, 255, 0.16);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(13, 25, 46, 0.92), rgba(9, 18, 34, 0.90));
     padding: 14px 16px 6px 16px;
     margin-bottom: 14px;
 }
+.viz-control-shell,
 .insights-control-shell {
-    border: 1px solid #dbe7ff;
-    border-radius: 14px;
-    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border: 1px solid rgba(82, 132, 255, 0.20);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(13, 25, 46, 0.92), rgba(9, 18, 34, 0.90));
     padding: 14px 16px 12px 16px;
     margin-bottom: 16px;
 }
+.viz-section-shell,
 .insights-section-shell {
-    border: 1px solid #e5e7eb;
-    background: #ffffff;
-    border-radius: 16px;
+    border: 1px solid rgba(129, 177, 255, 0.14);
+    background: linear-gradient(180deg, rgba(13, 25, 46, 0.88), rgba(9, 18, 34, 0.92));
+    border-radius: 18px;
     padding: 14px 16px 8px 16px;
     margin-top: 14px;
 }
 .insights-section-shell h3 {
     margin: 0 0 4px 0;
-    color: #0f172a;
+    color: #f8fbff;
     font-size: 1.05rem;
 }
 .insights-section-shell p {
     margin: 0;
-    color: #64748b;
+    color: #8da6d1;
     font-size: 0.9rem;
 }
+.viz-chart-shell,
 .insights-chart-shell {
-    border: 1px solid #edf0f5;
-    border-radius: 14px;
+    border: 1px solid rgba(129, 177, 255, 0.12);
+    border-radius: 18px;
     padding: 12px 12px 4px 12px;
-    background: #fcfdff;
+    background: linear-gradient(180deg, rgba(6, 13, 26, 0.86), rgba(10, 19, 36, 0.92));
 }
 .kpi-card {
-    background: rgba(0,0,0,0.03);
-    border: 1px solid rgba(0,0,0,0.09);
-    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(13, 25, 46, 0.95), rgba(9, 18, 34, 0.90));
+    border: 1px solid rgba(129, 177, 255, 0.14);
+    border-radius: 18px;
     padding: 18px 12px;
     text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
 }
 .kpi-label {
     font-size: 11px;
     letter-spacing: 1.2px;
     text-transform: uppercase;
-    color: #888;
+    color: #8da6d1;
     margin-bottom: 6px;
 }
 .kpi-value {
@@ -194,7 +248,7 @@ def _show_cash_flow_chart(monthly: pd.DataFrame) -> None:
         y=monthly["Net"],
         name="Net",
         mode="lines+markers",
-        line={"color": "#262730", "width": 3},
+        line={"color": "#7dd3fc", "width": 3},
         hovertext=[f"${v:,.0f}" for v in monthly["Net"]],
         hoverinfo=_HOVERINFO_TEXT_NAME,
     )
@@ -204,19 +258,21 @@ def _show_cash_flow_chart(monthly: pd.DataFrame) -> None:
         xaxis={"title": "Month", "showgrid": False, "dtick": "M1"},
         yaxis={
             "showgrid": True,
-            "gridcolor": "#eef2f7",
+            "gridcolor": _DARK_GRID,
             "zeroline": True,
-            "zerolinecolor": "#EFEFEF",
+            "zerolinecolor": "#29415f",
             "zerolinewidth": 2,
             "tickformat": "$,.1s",
+            "color": "#c8daf8",
         },
         barmode="relative",
         hovermode="x unified",
         bargap=0.5,
         showlegend=True,
-        legend={"orientation": "h", "y": 1.12, "x": 0.01},
-        plot_bgcolor="#fcfdff",
-        paper_bgcolor="#fcfdff",
+        legend={"orientation": "h", "y": 1.12, "x": 0.01, "font": {"color": "#c8daf8"}},
+        font={"color": "#e5f0ff"},
+        plot_bgcolor=_DARK_CHART_BG,
+        paper_bgcolor=_DARK_CHART_BG,
     )
     st.plotly_chart(go.Figure(data=[income_bar, expense_bar, net_line], layout=layout), use_container_width=True)
 
@@ -240,15 +296,17 @@ def _show_pl_chart(monthly: pd.DataFrame) -> None:
             xaxis={"showgrid": False, "dtick": "M1"},
             yaxis={
                 "showgrid": True,
-                "gridcolor": "#eef2f7",
+                "gridcolor": _DARK_GRID,
                 "zeroline": True,
-                "zerolinecolor": "#EFEFEF",
+                "zerolinecolor": "#29415f",
                 "zerolinewidth": 2,
                 "tickformat": "$,.1s",
+                "color": "#c8daf8",
             },
             bargap=0.5,
-            plot_bgcolor="#fcfdff",
-            paper_bgcolor="#fcfdff",
+            font={"color": "#e5f0ff"},
+            plot_bgcolor=_DARK_CHART_BG,
+            paper_bgcolor=_DARK_CHART_BG,
         ),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -272,8 +330,9 @@ def _show_category_donut(cat_expenses: pd.Series) -> list[dict]:
             title="Expenses by Category",
             title_font={"size": 18},
             showlegend=False,
-            plot_bgcolor="#fcfdff",
-            paper_bgcolor="#fcfdff",
+            font={"color": "#e5f0ff"},
+            plot_bgcolor=_DARK_CHART_BG,
+            paper_bgcolor=_DARK_CHART_BG,
         ),
     )
     return plotly_events(
@@ -595,9 +654,30 @@ def _show_upload_dialog(user_email: str) -> None:
 st.markdown(_KPI_CSS, unsafe_allow_html=True)
 _render_account_top_right(current_user_email)
 
-st.markdown("### Historical Cash Flow Dashboard")
-st.caption("Pick a date range to refresh your dashboard, or upload statements for new entries.")
+st.markdown(
+    """
+    <section class="viz-shell">
+        <div class="viz-toolbar-shell">
+            <div>
+                <strong>Insights Workspace</strong>
+                <h3>Historical Cash Flow Dashboard</h3>
+                <span>Track cash movement, category concentration, and upload fresh statements without leaving the dashboard.</span>
+            </div>
+        </div>
+    </section>
+    """,
+    unsafe_allow_html=True,
+)
 
+st.markdown(
+    """
+    <div class="viz-control-shell insights-control-shell">
+        <strong style="display:block; margin-bottom:6px; color:#7dd3fc; letter-spacing:0.18em; text-transform:uppercase; font-size:0.74rem;">Dashboard Controls</strong>
+        <p style="margin:0; color:#8da6d1;">Adjust the reporting window or import more statements to refresh the analytics below.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 date_col1, date_col2 = st.columns(2)
 default_start = date.today() - timedelta(days=365)
 with date_col1:
