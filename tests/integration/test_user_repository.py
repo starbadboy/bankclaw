@@ -3,7 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 
-from webapp.repository import delete_transactions, get_transactions_by_date_range, save_transactions
+from webapp.repository import (
+    delete_transactions,
+    get_category_memory,
+    get_transactions_by_date_range,
+    save_category_memory,
+    save_transactions,
+)
 from webapp.user_repository import authenticate_user, create_user
 
 
@@ -70,7 +76,7 @@ def test_save_and_read_transactions_are_user_scoped():
         )
 
     assert saved_count == 1
-    upsert_filter = mock_collection.update_one.call_args_list[0][0][0]
+    upsert_filter = mock_collection.bulk_write.call_args_list[0].args[0][0]._filter
     assert upsert_filter["user_email"] == "u@example.com"
 
     find_filter = mock_collection.find.call_args[0][0]
@@ -116,3 +122,82 @@ def test_delete_transactions_uses_user_scoped_filter():
     delete_filter = mock_collection.delete_one.call_args[0][0]
     assert delete_filter["user_email"] == "u@example.com"
     assert delete_filter["description"] == "Salary"
+
+
+def test_save_category_memory_upserts_user_scoped_normalized_records():
+    memory_df = pd.DataFrame([
+        {
+            "description": "GRAB TAXI",
+            "category": "Transport",
+        }
+    ])
+    mock_collection = MagicMock()
+    mock_db = MagicMock()
+
+    def _get_collection(name):  # noqa: ANN001
+        return mock_collection
+
+    mock_db.__getitem__.side_effect = _get_collection
+
+    with patch("webapp.repository.get_db", return_value=mock_db):
+        saved_count = save_category_memory(memory_df, user_email="u@example.com", source="manual")
+
+    assert saved_count == 1
+    index_spec = mock_collection.create_index.call_args_list[0][0][0]
+    assert ("user_email", 1) in index_spec
+    assert ("normalized_description", 1) in index_spec
+    operation = mock_collection.bulk_write.call_args.args[0][0]
+    assert operation._filter["user_email"] == "u@example.com"
+    assert operation._filter["normalized_description"] == "grab taxi"
+    assert operation._doc["$set"]["category"] == "Transport"
+    assert operation._doc["$set"]["source"] == "manual"
+
+
+def test_get_category_memory_returns_user_scoped_records():
+    mock_collection = MagicMock()
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value = mock_collection
+    mock_collection.find.return_value = [
+        {
+            "user_email": "u@example.com",
+            "normalized_description": "grab taxi",
+            "last_raw_description": "GRAB TAXI",
+            "category": "Transport",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ]
+
+    with patch("webapp.repository.get_db", return_value=mock_db):
+        result = get_category_memory(user_email="u@example.com")
+
+    assert isinstance(result, pd.DataFrame)
+    assert len(result) == 1
+    assert result.iloc[0]["category"] == "Transport"
+    find_filter = mock_collection.find.call_args.args[0]
+    assert find_filter["user_email"] == "u@example.com"
+
+
+def test_save_category_memory_deduplicates_same_normalized_description():
+    memory_df = pd.DataFrame([
+        {
+            "description": "GRAB-TAXI",
+            "category": "Transport",
+        },
+        {
+            "description": "GRAB TAXI",
+            "category": "Other",
+        },
+    ])
+    mock_collection = MagicMock()
+    mock_db = MagicMock()
+    mock_db.__getitem__.return_value = mock_collection
+
+    with patch("webapp.repository.get_db", return_value=mock_db):
+        saved_count = save_category_memory(memory_df, user_email="u@example.com", source="manual")
+
+    assert saved_count == 1
+    operations = mock_collection.bulk_write.call_args.args[0]
+    assert len(operations) == 1
+    assert operations[0]._filter["normalized_description"] == "grab taxi"
+    assert operations[0]._doc["$set"]["category"] == "Other"

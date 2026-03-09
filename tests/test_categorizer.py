@@ -95,3 +95,169 @@ def test_categorize_processes_in_batches_and_preserves_order(monkeypatch):
 
     assert list(result["category"]) == ["Transport", "Food & Dining", "Utilities"]
     assert mock_client.chat.completions.create.call_count == 2
+
+
+def test_categorize_reuses_exact_category_memory_without_ai(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB TAXI", "amount": -12.50, "bank": "DBS"},
+    ])
+    memory_df = pd.DataFrame([
+        {
+            "normalized_description": "grab taxi",
+            "last_raw_description": "GRAB TAXI",
+            "category": "Transport",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ])
+
+    with patch("webapp.categorizer.get_category_memory", return_value=memory_df), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        result = categorize_transactions(df, user_email="user@example.com")
+
+    assert list(result["category"]) == ["Transport"]
+    MockOpenAI.assert_not_called()
+
+
+def test_categorize_reuses_similar_category_memory_above_threshold(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB TAXI SINGAPORE", "amount": -12.50, "bank": "DBS"},
+    ])
+    memory_df = pd.DataFrame([
+        {
+            "normalized_description": "grab taxi singapore pte ltd",
+            "last_raw_description": "GRAB TAXI SINGAPORE PTE LTD",
+            "category": "Transport",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ])
+
+    with patch("webapp.categorizer.get_category_memory", return_value=memory_df), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        result = categorize_transactions(df, user_email="user@example.com")
+
+    assert list(result["category"]) == ["Transport"]
+    MockOpenAI.assert_not_called()
+
+
+def test_categorize_uses_ai_only_for_rows_without_memory_match(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB TAXI", "amount": -12.50, "bank": "DBS"},
+        {"date": "2024-01-16", "description": "NTUC FAIRPRICE", "amount": -45.30, "bank": "DBS"},
+    ])
+    memory_df = pd.DataFrame([
+        {
+            "normalized_description": "grab taxi",
+            "last_raw_description": "GRAB TAXI",
+            "category": "Transport",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ])
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Food & Dining"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("webapp.categorizer.get_category_memory", return_value=memory_df), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(df, user_email="user@example.com")
+
+    assert list(result["category"]) == ["Transport", "Food & Dining"]
+    assert mock_client.chat.completions.create.call_count == 1
+
+
+def test_categorize_falls_back_to_ai_when_memory_lookup_fails(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB TAXI", "amount": -12.50, "bank": "DBS"},
+    ])
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Transport"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("webapp.categorizer.get_category_memory", side_effect=RuntimeError("db unavailable")), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(df, user_email="user@example.com")
+
+    assert list(result["category"]) == ["Transport"]
+    mock_client.chat.completions.create.assert_called_once()
+
+
+def test_categorize_does_not_reuse_memory_for_different_short_merchant_name(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "GRAB PAY", "amount": -12.50, "bank": "DBS"},
+    ])
+    memory_df = pd.DataFrame([
+        {
+            "normalized_description": "grab taxi",
+            "last_raw_description": "GRAB TAXI",
+            "category": "Transport",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ])
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Transfer"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("webapp.categorizer.get_category_memory", return_value=memory_df), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(df, user_email="user@example.com")
+
+    assert list(result["category"]) == ["Transfer"]
+    mock_client.chat.completions.create.assert_called_once()
+
+
+def test_categorize_does_not_reuse_memory_for_generic_payment_wording(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "FAST PAYMENT TO BOB", "amount": -12.50, "bank": "DBS"},
+    ])
+    memory_df = pd.DataFrame([
+        {
+            "normalized_description": "fast payment to alice",
+            "last_raw_description": "FAST PAYMENT TO ALICE",
+            "category": "Transfer",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ])
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Other"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("webapp.categorizer.get_category_memory", return_value=memory_df), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(df, user_email="user@example.com")
+
+    assert list(result["category"]) == ["Other"]
+    mock_client.chat.completions.create.assert_called_once()

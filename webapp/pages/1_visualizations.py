@@ -10,7 +10,7 @@ from webapp.categorizer import VALID_CATEGORIES, categorize_transactions
 from webapp.constants import SUPPORTED_BANKS
 from webapp.helpers import create_df
 from webapp.visualizations_helpers import compute_category_expenses, compute_monthly_cash_flow
-from webapp.repository import get_transactions_by_date_range, save_transactions
+from webapp.repository import get_transactions_by_date_range, save_category_memory, save_transactions
 from webapp.app import process_files
 
 # Load environment variables from .env file
@@ -35,6 +35,13 @@ _CATEGORY_COLORS = [
 ]
 _HOVERINFO_TEXT_NAME = "text+name"
 _HTML_DIV_CLOSE = "</div>"
+
+def _get_manual_category_changes(original_df: pd.DataFrame, edited_df: pd.DataFrame) -> pd.DataFrame:
+    changed_rows = edited_df.loc[edited_df["category"] != original_df["category"]].copy()
+    if changed_rows.empty:
+        return changed_rows
+    return changed_rows[["description", "category"]].copy()
+
 
 _KPI_CSS = """
 <style>
@@ -225,6 +232,32 @@ def _show_category_donut(cat_expenses: pd.Series) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _show_category_breakdown(cat_expenses: pd.Series) -> None:
+    st.markdown(
+        """
+        <div class="insights-section-shell">
+            <h3>Category Breakdown</h3>
+            <p>See where spending concentration is highest by category.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    excluded_categories = st.multiselect(
+        "Exclude categories",
+        options=cat_expenses.index.tolist(),
+        default=[],
+        help="Hide selected categories from the Category Breakdown chart.",
+        key="category_breakdown_excluded_categories",
+    )
+    filtered_cat_expenses = cat_expenses[~cat_expenses.index.isin(excluded_categories)]
+    st.markdown('<div class="insights-chart-shell">', unsafe_allow_html=True)
+    if filtered_cat_expenses.empty:
+        st.info("No categories left to display. Clear one or more exclusions.")
+    else:
+        _show_category_donut(filtered_cat_expenses)
+    st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
+
+
 def show_mongodb_dashboard(df: pd.DataFrame) -> None:
     st.markdown(_KPI_CSS, unsafe_allow_html=True)
     monthly = compute_monthly_cash_flow(df)
@@ -272,18 +305,7 @@ def show_mongodb_dashboard(df: pd.DataFrame) -> None:
         st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
     with col_right:
         if not cat_expenses.empty:
-            st.markdown(
-                """
-                <div class="insights-section-shell">
-                    <h3>Category Breakdown</h3>
-                    <p>See where spending concentration is highest by category.</p>
-                </div>
-                <div class="insights-chart-shell">
-                """,
-                unsafe_allow_html=True,
-            )
-            _show_category_donut(cat_expenses)
-            st.markdown(_HTML_DIV_CLOSE, unsafe_allow_html=True)
+            _show_category_breakdown(cat_expenses)
 
 
 def _render_supported_banks_thumbnail() -> None:
@@ -351,7 +373,7 @@ def _show_upload_dialog(user_email: str) -> None:
             try:
                 with status_col:
                     with st.spinner("Analyzing with AI..."):
-                        categorized_df = categorize_transactions(raw_df)
+                        categorized_df = categorize_transactions(raw_df, user_email=user_email)
             except ValueError as e:
                 st.error(f"Configuration error: {e}")
                 return
@@ -385,7 +407,22 @@ def _show_upload_dialog(user_email: str) -> None:
     action_col1, action_col2 = st.columns(2)
     with action_col1:
         if st.button("Save Reviewed Transactions", type="primary", key="viz_save_reviewed"):
-            count = save_transactions(edited_df, user_email=user_email)
+            try:
+                count = save_transactions(edited_df, user_email=user_email)
+            except ValueError as e:
+                st.error(f"Configuration error: {e}")
+                return
+            except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+                st.error(f"Failed to save reviewed transactions: {e}")
+                return
+
+            manual_changes = _get_manual_category_changes(display_df, edited_df)
+            if not manual_changes.empty:
+                try:
+                    save_category_memory(manual_changes, user_email=user_email, source="manual")
+                except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+                    st.warning(f"Transactions were saved, but category memory could not be updated: {e}")
+
             st.success(f"Saved {count} transaction(s). Refreshing insights...")
             st.session_state.pop("viz_upload_dialog_open", None)
             st.session_state.pop("viz_upload_review_df", None)

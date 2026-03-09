@@ -51,6 +51,104 @@ def test_compute_category_expenses_sums_correctly():
     assert result["Food & Dining"] == pytest.approx(80.00)
 
 
+def _columns_factory(spec):
+    if isinstance(spec, int):
+        return [MagicMock() for _ in range(spec)]
+    if isinstance(spec, list):
+        return [MagicMock() for _ in range(len(spec))]
+    return [MagicMock(), MagicMock()]
+
+
+def test_show_dashboard_renders_category_exclusion_multiselect():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]) as multiselect_mock, \
+         patch("streamlit.plotly_chart"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["show_mongodb_dashboard"](make_df())
+
+    multiselect_mock.assert_called_once_with(
+        "Exclude categories",
+        options=["Food & Dining", "Entertainment", "Transport"],
+        default=[],
+        help="Hide selected categories from the Category Breakdown chart.",
+        key="category_breakdown_excluded_categories",
+    )
+
+
+def test_show_dashboard_keeps_full_donut_when_no_categories_are_excluded():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=[]), \
+         patch("streamlit.plotly_chart") as plotly_chart_mock, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["show_mongodb_dashboard"](make_df())
+
+    donut_fig = plotly_chart_mock.call_args_list[-1].args[0]
+    assert list(donut_fig.data[0].labels) == ["Food & Dining", "Entertainment", "Transport"]
+    assert list(donut_fig.data[0].values) == [80.0, 18.0, 12.5]
+
+
+def test_show_dashboard_filters_excluded_categories_from_donut_chart():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=["Food & Dining"]), \
+         patch("streamlit.plotly_chart") as plotly_chart_mock, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["show_mongodb_dashboard"](make_df())
+
+    donut_fig = plotly_chart_mock.call_args_list[-1].args[0]
+    assert list(donut_fig.data[0].labels) == ["Entertainment", "Transport"]
+    assert list(donut_fig.data[0].values) == [18.0, 12.5]
+
+
+def test_show_dashboard_shows_empty_state_when_all_categories_are_excluded():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.multiselect", return_value=["Food & Dining", "Entertainment", "Transport"]), \
+         patch("streamlit.info") as info_mock, \
+         patch("streamlit.plotly_chart") as plotly_chart_mock, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        info_mock.reset_mock()
+        plotly_chart_mock.reset_mock()
+        module_globals["show_mongodb_dashboard"](make_df())
+
+    info_mock.assert_called_once_with("No categories left to display. Clear one or more exclusions.")
+    pie_chart_calls = [
+        call for call in plotly_chart_mock.call_args_list
+        if any(trace.type == "pie" for trace in call.args[0].data)
+    ]
+    assert pie_chart_calls == []
+
+
 def test_visualizations_page_renders_modern_workspace_shell():
     page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
 
@@ -70,17 +168,11 @@ def test_visualizations_page_renders_modern_workspace_shell():
 
 def test_visualizations_page_renders_structured_analytics_sections():
     page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
-    def columns_factory(spec):
-        if isinstance(spec, int):
-            return [MagicMock() for _ in range(spec)]
-        if isinstance(spec, list):
-            return [MagicMock() for _ in range(len(spec))]
-        return [MagicMock(), MagicMock()]
 
     with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
          patch("streamlit.markdown") as mock_markdown, \
          patch("streamlit.caption"), \
-         patch("streamlit.columns", side_effect=columns_factory), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
          patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
          patch("streamlit.button", return_value=False), \
          patch("streamlit.plotly_chart"), \
@@ -143,17 +235,11 @@ def test_upload_dialog_shows_supported_banks_thumbnail():
 def test_visualizations_page_shows_upload_button_even_when_data_exists():
     page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
     mock_button = MagicMock(return_value=False)
-    def columns_factory(spec):
-        if isinstance(spec, int):
-            return [MagicMock() for _ in range(spec)]
-        if isinstance(spec, list):
-            return [MagicMock() for _ in range(len(spec))]
-        return [MagicMock(), MagicMock()]
 
     with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
          patch("streamlit.markdown"), \
          patch("streamlit.caption"), \
-         patch("streamlit.columns", side_effect=columns_factory), \
+         patch("streamlit.columns", side_effect=_columns_factory), \
          patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
          patch("streamlit.button", mock_button), \
          patch("streamlit.plotly_chart"), \
@@ -304,3 +390,126 @@ def test_upload_dialog_ai_process_shows_spinner_beside_action_button():
         dialog_fn("user@example.com")
 
     spinner_mock.assert_called_once_with("Analyzing with AI...")
+
+
+def test_upload_dialog_process_passes_user_email_to_categorizer():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    raw_df = pd.DataFrame([{"date": "2024-01-10", "description": "Salary", "amount": 5000.0, "bank": "DBS"}])
+    categorized_df = raw_df.assign(category=["Income"])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.file_uploader", return_value=[MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        dialog_fn.__globals__["st"].session_state = {}
+        dialog_fn.__globals__["st"].button = MagicMock(side_effect=[True, False])
+        dialog_fn.__globals__["process_files"] = MagicMock(return_value=[MagicMock()])
+        dialog_fn.__globals__["create_df"] = MagicMock(return_value=raw_df)
+        categorize_mock = MagicMock(return_value=categorized_df)
+        dialog_fn.__globals__["categorize_transactions"] = categorize_mock
+        dialog_fn("demo@example.com")
+
+    categorize_mock.assert_called_once_with(raw_df, user_email="demo@example.com")
+
+
+def test_upload_review_save_persists_only_manual_category_changes_to_memory():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    review_df = pd.DataFrame([
+        {
+            "date": pd.Timestamp("2026-03-01"),
+            "description": "GRAB TAXI",
+            "amount": -12.5,
+            "bank": "DBS",
+            "category": "Transport",
+        },
+        {
+            "date": pd.Timestamp("2026-03-02"),
+            "description": "NTUC",
+            "amount": -22.0,
+            "bank": "DBS",
+            "category": "Food & Dining",
+        },
+    ])
+    edited_df = review_df.copy()
+    edited_df.loc[0, "category"] = "Other"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.rerun"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        st_obj = dialog_fn.__globals__["st"]
+        st_obj.session_state = {"viz_upload_review_df": review_df}
+        st_obj.data_editor = MagicMock(return_value=edited_df)
+        save_transactions_mock = MagicMock(return_value=2)
+        save_memory_mock = MagicMock(return_value=1)
+        dialog_fn.__globals__["save_transactions"] = save_transactions_mock
+        dialog_fn.__globals__["save_category_memory"] = save_memory_mock
+        dialog_fn.__globals__["st"].button = MagicMock(side_effect=[True, False])
+
+        dialog_fn("demo@example.com")
+
+    save_transactions_mock.assert_called_once()
+    save_memory_mock.assert_called_once()
+    saved_memory_df = save_memory_mock.call_args.args[0]
+    assert len(saved_memory_df) == 1
+    assert saved_memory_df.iloc[0]["description"] == "GRAB TAXI"
+    assert saved_memory_df.iloc[0]["category"] == "Other"
+    assert save_memory_mock.call_args.kwargs["user_email"] == "demo@example.com"
+    assert save_memory_mock.call_args.kwargs["source"] == "manual"
+
+
+def test_upload_review_save_warns_when_memory_update_fails():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    review_df = pd.DataFrame([
+        {
+            "date": pd.Timestamp("2026-03-01"),
+            "description": "GRAB TAXI",
+            "amount": -12.5,
+            "bank": "DBS",
+            "category": "Transport",
+        }
+    ])
+    edited_df = review_df.copy()
+    edited_df.loc[0, "category"] = "Other"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.warning") as warning_mock, \
+         patch("streamlit.success") as success_mock, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        st_obj = dialog_fn.__globals__["st"]
+        st_obj.session_state = {"viz_upload_review_df": review_df}
+        st_obj.data_editor = MagicMock(return_value=edited_df)
+        dialog_fn.__globals__["save_transactions"] = MagicMock(return_value=1)
+        dialog_fn.__globals__["save_category_memory"] = MagicMock(side_effect=RuntimeError("memory unavailable"))
+        dialog_fn.__globals__["st"].button = MagicMock(side_effect=[True, False])
+
+        dialog_fn("demo@example.com")
+
+    warning_mock.assert_called_once()
+    success_mock.assert_called_once()

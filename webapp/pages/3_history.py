@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 
 from webapp.auth import clear_auth_query_token, require_authentication
 from webapp.categorizer import VALID_CATEGORIES
-from webapp.repository import delete_transactions, get_transactions_by_date_range, save_transactions
+from webapp.repository import delete_transactions, get_transactions_by_date_range, save_category_memory, save_transactions
 
 # Load environment variables from .env file
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
@@ -43,18 +43,26 @@ def _update_delete_marks_from_editor(edited_df) -> None:  # noqa: ANN001
     st.session_state[_DELETE_MARKS_KEY] = marks
 
 
-def _sync_category_changes(original_df, edited_df, user_email: str) -> int:  # noqa: ANN001
+def _sync_category_changes(original_df, edited_df, user_email: str) -> tuple[int, str | None]:  # noqa: ANN001
     changed_rows = edited_df.loc[edited_df["category"] != original_df["category"]].copy()
+    if _DELETE_COL in changed_rows.columns:
+        changed_rows = changed_rows.loc[changed_rows[_DELETE_COL] != True].copy()  # noqa: E712
     if changed_rows.empty:
-        return 0
+        return 0, None
 
     save_payload = changed_rows[["date", "description", "amount", "bank", "category"]].copy()
     updated_count = save_transactions(save_payload, user_email=user_email)
+    memory_payload = changed_rows[["description", "category"]].copy()
+    memory_warning = None
+    try:
+        save_category_memory(memory_payload, user_email=user_email, source="manual")
+    except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+        memory_warning = f"Category updates were saved, but category memory could not be updated: {e}"
     base_df = st.session_state["history_df"].copy()
     for _, row in save_payload.iterrows():
         base_df.loc[_build_row_mask(base_df, row), "category"] = row["category"]
     st.session_state["history_df"] = base_df
-    return updated_count
+    return updated_count, memory_warning
 
 
 def _sync_deleted_rows(edited_df, user_email: str) -> int:  # noqa: ANN001
@@ -167,8 +175,10 @@ def history_page() -> None:
         edited_df[_DELETE_COL] = False
     _update_delete_marks_from_editor(edited_df)
 
-    updated_count = _sync_category_changes(original_df, edited_df, current_user_email)
+    updated_count, memory_warning = _sync_category_changes(original_df, edited_df, current_user_email)
     if updated_count:
+        if memory_warning:
+            st.warning(memory_warning)
         st.success(f"Saved category updates for {updated_count} transaction(s).")
         st.session_state.pop("history_editor", None)
         st.rerun()
@@ -185,6 +195,14 @@ def history_page() -> None:
                 st.rerun()
         with cancel_col:
             if st.button("Cancel"):
+                cancel_df = edited_df.copy()
+                if _DELETE_COL in cancel_df.columns:
+                    cancel_df[_DELETE_COL] = False
+                updated_count, memory_warning = _sync_category_changes(original_df, cancel_df, current_user_email)
+                if memory_warning:
+                    st.warning(memory_warning)
+                if updated_count:
+                    st.success(f"Saved category updates for {updated_count} transaction(s).")
                 _clear_delete_marks(delete_payload)
                 st.session_state.pop("history_editor", None)
                 st.rerun()

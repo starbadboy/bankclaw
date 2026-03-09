@@ -187,3 +187,196 @@ def test_history_page_handles_missing_trash_column_without_keyerror():
 
     mock_delete.assert_not_called()
     mock_save.assert_not_called()
+
+
+def test_history_page_persists_manual_category_changes_to_memory():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Coffee",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Food & Dining",
+            "saved_at": "2026-03-01T01:00:00Z",
+        }
+    ])
+    edited_df = loaded_df.copy()
+    edited_df.loc[0, "category"] = "Other"
+    edited_df["_delete"] = False
+
+    def _button_side_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        mapping = {
+            "Logout": False,
+            "🔍 Load Transactions": True,
+        }
+        return mapping.get(label, False)
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("webapp.repository.save_transactions") as mock_save, \
+         patch("webapp.repository.save_category_memory") as mock_save_memory, \
+         patch("webapp.repository.delete_transactions") as mock_delete, \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df), \
+         patch("streamlit.download_button"), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.button", side_effect=_button_side_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_save.assert_called_once()
+    mock_save_memory.assert_called_once()
+    saved_memory_df = mock_save_memory.call_args.args[0]
+    assert len(saved_memory_df) == 1
+    assert saved_memory_df.iloc[0]["description"] == "Coffee"
+    assert saved_memory_df.iloc[0]["category"] == "Other"
+    assert mock_save_memory.call_args.kwargs["user_email"] == "demo@example.com"
+    assert mock_save_memory.call_args.kwargs["source"] == "manual"
+    mock_delete.assert_not_called()
+
+
+def test_history_page_skips_category_memory_for_rows_pending_delete():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Coffee",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Food & Dining",
+            "saved_at": "2026-03-01T01:00:00Z",
+        }
+    ])
+    edited_df = loaded_df.copy()
+    edited_df.loc[0, "category"] = "Other"
+    edited_df["_delete"] = True
+
+    def _button_side_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        mapping = {
+            "Logout": False,
+            "🔍 Load Transactions": True,
+            "Confirm Delete": False,
+            "Cancel": False,
+        }
+        return mapping.get(label, False)
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("webapp.repository.save_transactions") as mock_save, \
+         patch("webapp.repository.save_category_memory") as mock_save_memory, \
+         patch("webapp.repository.delete_transactions") as mock_delete, \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df), \
+         patch("streamlit.download_button"), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.button", side_effect=_button_side_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_save.assert_not_called()
+    mock_save_memory.assert_not_called()
+    mock_delete.assert_not_called()
+
+
+def test_history_page_warns_when_memory_update_fails():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Coffee",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Food & Dining",
+            "saved_at": "2026-03-01T01:00:00Z",
+        }
+    ])
+    edited_df = loaded_df.copy()
+    edited_df.loc[0, "category"] = "Other"
+    edited_df["_delete"] = False
+
+    def _button_side_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        mapping = {
+            "Logout": False,
+            "🔍 Load Transactions": True,
+        }
+        return mapping.get(label, False)
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("webapp.repository.save_transactions") as mock_save, \
+         patch("webapp.repository.save_category_memory", side_effect=RuntimeError("memory unavailable")), \
+         patch("webapp.repository.delete_transactions") as mock_delete, \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df), \
+         patch("streamlit.download_button"), \
+         patch("streamlit.warning") as warning_mock, \
+         patch("streamlit.success") as success_mock, \
+         patch("streamlit.rerun"), \
+         patch("streamlit.button", side_effect=_button_side_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_save.assert_called_once()
+    warning_mock.assert_called_once()
+    success_mock.assert_called_once()
+    mock_delete.assert_not_called()
+
+
+def test_history_page_cancel_delete_preserves_category_edit():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Coffee",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Food & Dining",
+            "saved_at": "2026-03-01T01:00:00Z",
+        }
+    ])
+    edited_df = loaded_df.copy()
+    edited_df.loc[0, "category"] = "Other"
+    edited_df["_delete"] = True
+
+    def _button_side_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        mapping = {
+            "Logout": False,
+            "🔍 Load Transactions": True,
+            "Confirm Delete": False,
+            "Cancel": True,
+        }
+        return mapping.get(label, False)
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("webapp.repository.save_transactions") as mock_save, \
+         patch("webapp.repository.save_category_memory") as mock_save_memory, \
+         patch("webapp.repository.delete_transactions") as mock_delete, \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df), \
+         patch("streamlit.download_button"), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.button", side_effect=_button_side_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_save.assert_called_once()
+    mock_save_memory.assert_called_once()
+    mock_delete.assert_not_called()
