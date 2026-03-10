@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 from streamlit_plotly_events import plotly_events
 
 from webapp.auth import clear_auth_query_token, require_authentication
-from webapp.categorizer import VALID_CATEGORIES, categorize_transactions
+from webapp.category_definitions import get_effective_categories
+from webapp.categorizer import categorize_transactions
 from webapp.constants import SUPPORTED_BANKS
 from webapp.helpers import create_df
 from webapp.visualizations_helpers import compute_category_expenses, compute_monthly_cash_flow
@@ -554,50 +555,89 @@ def _maybe_open_upload_dialog(user_email: str) -> None:
         _show_upload_dialog(user_email)
 
 
-@st.dialog("Upload statement PDFs")
-def _show_upload_dialog(user_email: str) -> None:
-    # Mark as handled for this render to avoid duplicate dialog creation.
-    st.session_state["viz_upload_dialog_open"] = False
-    _render_supported_banks_thumbnail()
-    uploaded_files = st.file_uploader(
-        "Upload one or more statement PDFs",
-        type="pdf",
-        accept_multiple_files=True,
-        key="viz_upload_files",
-    )
-    review_df = st.session_state.get("viz_upload_review_df")
+def _process_upload_with_ai(uploaded_files, user_email: str, category_options: list[str], status_col) -> bool:  # noqa: ANN001
+    if not uploaded_files:
+        st.warning("Please upload at least one PDF.")
+        return False
 
-    if review_df is None:
-        process_col, status_col = st.columns([2, 3])
-        with process_col:
-            process_clicked = st.button("Process with AI Categories", type="primary", key="viz_process_ai")
+    processed_files = process_files(uploaded_files)
+    if not processed_files:
+        st.warning("No valid statements were processed.")
+        return False
+
+    raw_df = create_df(processed_files)
+    try:
         with status_col:
-            if not process_clicked:
-                st.caption("AI analysis status will appear here.")
-        if process_clicked:
-            if not uploaded_files:
-                st.warning("Please upload at least one PDF.")
-                return
-            processed_files = process_files(uploaded_files)
-            if not processed_files:
-                st.warning("No valid statements were processed.")
-                return
-            raw_df = create_df(processed_files)
-            try:
-                with status_col:
-                    with st.spinner("Analyzing with AI..."):
-                        categorized_df = categorize_transactions(raw_df, user_email=user_email)
-            except ValueError as e:
-                st.error(f"Configuration error: {e}")
-                return
-            except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
-                st.error(f"AI categorisation failed: {e}")
-                return
-            st.session_state["viz_upload_review_df"] = categorized_df
+            with st.spinner("Analyzing with AI..."):
+                categorized_df = categorize_transactions(
+                    raw_df,
+                    user_email=user_email,
+                    allowed_categories=category_options,
+                )
+    except ValueError as e:
+        st.error(f"Configuration error: {e}")
+        return False
+    except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+        st.error(f"AI categorisation failed: {e}")
+        return False
+
+    st.session_state["viz_upload_review_df"] = categorized_df
+    st.session_state["viz_upload_review_categories"] = category_options
+    st.session_state["viz_upload_dialog_open"] = True
+    st.rerun()
+    return True
+
+
+def _render_upload_process_step(uploaded_files, user_email: str, category_options: list[str]) -> None:  # noqa: ANN001
+    process_col, status_col = st.columns([2, 3])
+    with process_col:
+        process_clicked = st.button("Process with AI Categories", type="primary", key="viz_process_ai")
+    with status_col:
+        if not process_clicked:
+            st.caption("AI analysis status will appear here.")
+    if process_clicked:
+        _process_upload_with_ai(uploaded_files, user_email, category_options, status_col)
+
+
+def _category_option_keys(category_options: list[str]) -> set[str]:
+    return {" ".join(str(category).split()).casefold() for category in category_options}
+
+
+def _review_categories_changed(stored_categories: list[str], current_categories: list[str]) -> bool:
+    return _category_option_keys(stored_categories) != _category_option_keys(current_categories)
+
+
+def _render_reprocess_required_state() -> None:
+    st.warning(
+        "Your category list changed after this review started. Please reprocess the upload with the latest categories before saving."
+    )
+    _render_reprocess_review_actions()
+
+
+def _render_reprocess_review_actions() -> None:
+    action_col1, action_col2 = st.columns(2)
+    with action_col1:
+        if st.button("Reprocess Upload", type="primary", key="viz_reprocess_review"):
+            st.session_state.pop("viz_upload_review_df", None)
+            st.session_state.pop("viz_upload_review_categories", None)
             st.session_state["viz_upload_dialog_open"] = True
             st.rerun()
-        return
+    with action_col2:
+        if st.button("Discard Review", key="viz_discard_review"):
+            st.session_state.pop("viz_upload_dialog_open", None)
+            st.session_state.pop("viz_upload_review_df", None)
+            st.session_state.pop("viz_upload_review_categories", None)
+            st.rerun()
 
+
+def _render_review_validation_unavailable_state() -> None:
+    st.warning(
+        "Current category options could not be validated, so this review is temporarily blocked. Please reprocess or discard it."
+    )
+    _render_reprocess_review_actions()
+
+
+def _render_upload_review_step(review_df, user_email: str, category_options: list[str]) -> None:  # noqa: ANN001
     st.caption("Review and adjust categories before saving.")
     display_df = review_df.copy()
     if "date" in display_df.columns:
@@ -605,7 +645,7 @@ def _show_upload_dialog(user_email: str) -> None:
     edited_df = st.data_editor(
         display_df,
         column_config={
-            "category": st.column_config.SelectboxColumn("Category", options=VALID_CATEGORIES, required=True),
+            "category": st.column_config.SelectboxColumn("Category", options=category_options, required=True),
             "date": st.column_config.TextColumn("Date", disabled=True),
             "description": st.column_config.TextColumn("Description", disabled=True),
             "amount": st.column_config.NumberColumn("Amount", format="%.2f", disabled=True),
@@ -639,6 +679,7 @@ def _show_upload_dialog(user_email: str) -> None:
             st.success(f"Saved {count} transaction(s). Refreshing insights...")
             st.session_state.pop("viz_upload_dialog_open", None)
             st.session_state.pop("viz_upload_review_df", None)
+            st.session_state.pop("viz_upload_review_categories", None)
             st.session_state.pop("hist_df", None)
             st.session_state.pop("hist_date_range", None)
             st.rerun()
@@ -646,7 +687,49 @@ def _show_upload_dialog(user_email: str) -> None:
         if st.button("Discard Review", key="viz_discard_review"):
             st.session_state.pop("viz_upload_dialog_open", None)
             st.session_state.pop("viz_upload_review_df", None)
+            st.session_state.pop("viz_upload_review_categories", None)
             st.rerun()
+
+
+@st.dialog("Upload statement PDFs")
+def _show_upload_dialog(user_email: str) -> None:
+    # Mark as handled for this render to avoid duplicate dialog creation.
+    st.session_state["viz_upload_dialog_open"] = False
+    _render_supported_banks_thumbnail()
+    uploaded_files = st.file_uploader(
+        "Upload one or more statement PDFs",
+        type="pdf",
+        accept_multiple_files=True,
+        key="viz_upload_files",
+    )
+    review_df = st.session_state.get("viz_upload_review_df")
+
+    if review_df is None:
+        try:
+            category_options = get_effective_categories(user_email)
+        except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+            st.error(f"Failed to load category options: {e}")
+            return
+        _render_upload_process_step(uploaded_files, user_email, category_options)
+        return
+
+    category_options = st.session_state.get("viz_upload_review_categories")
+    if not category_options:
+        try:
+            category_options = get_effective_categories(user_email)
+        except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+            st.error(f"Failed to load category options: {e}")
+            return
+    else:
+        try:
+            current_categories = get_effective_categories(user_email)
+        except Exception:
+            _render_review_validation_unavailable_state()
+            return
+        if _review_categories_changed(category_options, current_categories):
+            _render_reprocess_required_state()
+            return
+    _render_upload_review_step(review_df, user_email, category_options)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────

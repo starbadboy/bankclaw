@@ -1,17 +1,28 @@
 from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
 from webapp.auth import clear_auth_query_token, require_authentication
-from webapp.categorizer import VALID_CATEGORIES
-from webapp.repository import delete_transactions, get_transactions_by_date_range, save_category_memory, save_transactions
+from webapp.category_definitions import get_effective_categories, validate_custom_category_name
+from webapp.repository import (
+    archive_custom_category,
+    delete_transactions,
+    get_custom_categories,
+    get_transactions_by_date_range,
+    save_category_memory,
+    save_custom_category,
+    save_transactions,
+)
 
 # Load environment variables from .env file
 load_dotenv(Path(__file__).parent.parent.parent / ".env")
 _DELETE_COL = "_delete"
 _DELETE_MARKS_KEY = "history_delete_marks"
+_DOWNLOAD_LABEL = "Download CSV"
+_CSV_MIME_TYPE = "text/csv"
 _HISTORY_CSS = """
 <style>
 div[data-testid="stAppViewContainer"] {
@@ -163,6 +174,206 @@ def _fetch_history(start_date: date, end_date: date, user_email: str) -> bool:
     return False
 
 
+def _category_key(category: str) -> str:
+    return " ".join(str(category).split()).casefold()
+
+
+def _find_legacy_categories(df, active_categories: list[str]) -> list[str]:  # noqa: ANN001
+    active_keys = {_category_key(category) for category in active_categories}
+    legacy_categories: list[str] = []
+
+    for raw_category in df["category"].dropna().tolist():
+        cleaned_category = " ".join(str(raw_category).split())
+        if not cleaned_category or _category_key(cleaned_category) in active_keys:
+            continue
+        if cleaned_category in legacy_categories:
+            continue
+        legacy_categories.append(cleaned_category)
+
+    return legacy_categories
+
+
+def _is_legacy_category(category: str, active_categories: list[str]) -> bool:
+    active_keys = {_category_key(active_category) for active_category in active_categories}
+    return _category_key(category) not in active_keys
+
+
+def _load_category_options(user_email: str) -> list[str] | None:
+    try:
+        return get_effective_categories(user_email)
+    except Exception as e:  # pylint: disable=broad-except  # noqa: BLE001
+        st.error(f"Failed to load category options: {e}")
+        return None
+
+
+def _render_legacy_history_rows(legacy_df, legacy_categories: list[str]) -> None:  # noqa: ANN001
+    if not legacy_categories:
+        return
+
+    joined_categories = ", ".join(sorted(legacy_categories))
+    st.warning(
+        "Some saved transactions use categories that are no longer active: "
+        f"{joined_categories}. You can keep viewing those records, but new selections use only active categories."
+    )
+    st.dataframe(legacy_df, use_container_width=True, hide_index=True)
+
+
+def _download_history_csv(edited_df, legacy_df) -> None:  # noqa: ANN001
+    download_df = pd.concat(
+        [
+            edited_df.drop(columns=[_DELETE_COL], errors="ignore"),
+            legacy_df,
+        ],
+        ignore_index=True,
+    )
+    csv = download_df.to_csv(index=False).encode("utf-8")
+    st.download_button(_DOWNLOAD_LABEL, data=csv, mime=_CSV_MIME_TYPE)
+
+
+def _render_read_only_history_rows(df) -> None:  # noqa: ANN001
+    st.warning("Category options are temporarily unavailable, so history is in read-only mode for now.")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    csv = df.to_csv(index=False).encode("utf-8")
+    st.download_button(_DOWNLOAD_LABEL, data=csv, mime=_CSV_MIME_TYPE)
+
+
+def _handle_delete_confirmation(edited_df, original_df, current_user_email: str) -> None:  # noqa: ANN001
+    delete_payload = _pending_delete_payload(edited_df)
+    if delete_payload.empty:
+        return
+
+    st.warning(f"Are you sure you want to delete {len(delete_payload)} transaction(s)?")
+    confirm_col, cancel_col = st.columns(2)
+    with confirm_col:
+        if st.button("Confirm Delete", type="primary"):
+            deleted_count = _sync_deleted_rows(edited_df, current_user_email)
+            st.success(f"Deleted {deleted_count} transaction(s).")
+            st.session_state.pop("history_editor", None)
+            st.rerun()
+    with cancel_col:
+        if st.button("Cancel"):
+            cancel_df = edited_df.copy()
+            if _DELETE_COL in cancel_df.columns:
+                cancel_df[_DELETE_COL] = False
+            updated_count, memory_warning = _sync_category_changes(original_df, cancel_df, current_user_email)
+            if memory_warning:
+                st.warning(memory_warning)
+            if updated_count:
+                st.success(f"Saved category updates for {updated_count} transaction(s).")
+            _clear_delete_marks(delete_payload)
+            st.session_state.pop("history_editor", None)
+            st.rerun()
+
+
+def _render_editable_history_rows(editable_df, legacy_df, current_user_email: str, category_options: list[str]) -> None:  # noqa: ANN001
+    if editable_df.empty:
+        csv = pd.concat([editable_df, legacy_df], ignore_index=True).to_csv(index=False).encode("utf-8")
+        st.download_button(_DOWNLOAD_LABEL, data=csv, mime=_CSV_MIME_TYPE)
+        return
+
+    editable_df = _apply_delete_marks(editable_df)
+    original_df = editable_df.copy()
+    edited_df = st.data_editor(
+        editable_df,
+        column_config={
+            _DELETE_COL: st.column_config.CheckboxColumn("🗑️"),
+            "category": st.column_config.SelectboxColumn("Category", options=category_options, required=True),
+            "date": st.column_config.TextColumn("Date", disabled=True),
+            "description": st.column_config.TextColumn("Description", disabled=True),
+            "amount": st.column_config.NumberColumn("Amount", format="%.2f", disabled=True),
+            "bank": st.column_config.TextColumn("Bank", disabled=True),
+            "saved_at": st.column_config.TextColumn("Saved At", disabled=True),
+        },
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="history_editor",
+    )
+    if _DELETE_COL not in edited_df.columns:
+        edited_df[_DELETE_COL] = False
+    _update_delete_marks_from_editor(edited_df)
+
+    updated_count, memory_warning = _sync_category_changes(original_df, edited_df, current_user_email)
+    if updated_count:
+        if memory_warning:
+            st.warning(memory_warning)
+        st.success(f"Saved category updates for {updated_count} transaction(s).")
+        st.session_state.pop("history_editor", None)
+        st.rerun()
+
+    _handle_delete_confirmation(edited_df, original_df, current_user_email)
+    _download_history_csv(edited_df, legacy_df)
+
+
+def _render_history_results(df, current_user_email: str) -> None:  # noqa: ANN001
+    st.markdown(f'<div class="history-results-shell"><strong>Results</strong><p>{len(df)} transactions</p></div>', unsafe_allow_html=True)
+    categories = ["All"] + sorted(df["category"].unique().tolist())
+    selected_cat = st.selectbox("Filter by category", options=categories)
+    df = df[df["category"] == selected_cat].copy() if selected_cat != "All" else df.copy()
+
+    desired_order = ["date", "description", "amount", "bank", "category", "saved_at"]
+    df = df[[c for c in desired_order if c in df.columns]]
+    category_options = _load_category_options(current_user_email)
+    if category_options is None:
+        _render_read_only_history_rows(df)
+        return
+    legacy_mask = df["category"].apply(lambda category: _is_legacy_category(str(category), category_options))
+    legacy_df = df.loc[legacy_mask].copy()
+    editable_df = df.loc[~legacy_mask].copy()
+    legacy_categories = _find_legacy_categories(df, category_options)
+
+    _render_legacy_history_rows(legacy_df, legacy_categories)
+    _render_editable_history_rows(editable_df, legacy_df, current_user_email, category_options)
+
+
+def _render_category_manager(user_email: str) -> None:
+    custom_cats_df = get_custom_categories(user_email)
+    custom_names = custom_cats_df["name"].tolist() if not custom_cats_df.empty else []
+
+    with st.expander("⚙️ Manage Categories", expanded=False):
+        _render_add_category_form(user_email, custom_names)
+        _render_custom_categories_list(user_email, custom_names)
+
+
+def _render_add_category_form(user_email: str, custom_names: list[str]) -> None:
+    from webapp.category_definitions import DEFAULT_CATEGORIES  # noqa: PLC0415
+
+    st.caption("Add a custom category to use alongside the built-in defaults.")
+    col_input, col_btn = st.columns([4, 1])
+    with col_input:
+        new_name = st.text_input("New category name", label_visibility="collapsed", placeholder="e.g. Pet Care")
+    with col_btn:
+        if st.button("Add Category", key="cat_mgr_add", use_container_width=True):
+            existing = list(DEFAULT_CATEGORIES) + custom_names
+            try:
+                cleaned = validate_custom_category_name(new_name, existing)
+            except ValueError as exc:
+                st.error(str(exc))
+                return
+            save_custom_category(cleaned, user_email)
+            st.success(f'Category "{cleaned}" added.')
+            st.rerun()
+
+
+def _render_custom_categories_list(user_email: str, custom_names: list[str]) -> None:
+    from webapp.category_definitions import DEFAULT_CATEGORIES  # noqa: PLC0415
+
+    st.caption("Active categories (built-in are read-only; your custom ones can be archived).")
+    all_active = [c for c in DEFAULT_CATEGORIES if c != "Other"] + custom_names + ["Other"]
+
+    for cat in all_active:
+        row_col, btn_col = st.columns([5, 1])
+        is_custom = cat in custom_names
+        label = f"**{cat}**" if is_custom else cat
+        with row_col:
+            st.markdown(label)
+        with btn_col:
+            if is_custom and st.button("Archive", key=f"cat_mgr_archive_{cat}", use_container_width=True):
+                archive_custom_category(cat, user_email)
+                st.success(f'"{cat}" archived.')
+                st.rerun()
+
+
 def history_page() -> None:
     current_user_email = require_authentication()
     st.set_page_config(page_title="Transaction History", layout="wide")
@@ -178,6 +389,7 @@ def history_page() -> None:
         """,
         unsafe_allow_html=True,
     )
+    _render_category_manager(current_user_email)
     st.markdown(
         """
         <div class="history-filter-shell">
@@ -207,70 +419,7 @@ def history_page() -> None:
     if df.empty:
         st.info("No transactions found for the selected date range.")
         return
-
-    st.markdown(f'<div class="history-results-shell"><strong>Results</strong><p>{len(df)} transactions</p></div>', unsafe_allow_html=True)
-    categories = ["All"] + sorted(df["category"].unique().tolist())
-    selected_cat = st.selectbox("Filter by category", options=categories)
-    df = df[df["category"] == selected_cat].copy() if selected_cat != "All" else df.copy()
-
-    desired_order = ["date", "description", "amount", "bank", "category", "saved_at"]
-    df = df[[c for c in desired_order if c in df.columns]]
-    df = _apply_delete_marks(df)
-    original_df = df.copy()
-    edited_df = st.data_editor(
-        df,
-        column_config={
-            _DELETE_COL: st.column_config.CheckboxColumn("🗑️"),
-            "category": st.column_config.SelectboxColumn("Category", options=VALID_CATEGORIES, required=True),
-            "date": st.column_config.TextColumn("Date", disabled=True),
-            "description": st.column_config.TextColumn("Description", disabled=True),
-            "amount": st.column_config.NumberColumn("Amount", format="%.2f", disabled=True),
-            "bank": st.column_config.TextColumn("Bank", disabled=True),
-            "saved_at": st.column_config.TextColumn("Saved At", disabled=True),
-        },
-        use_container_width=True,
-        hide_index=True,
-        num_rows="fixed",
-        key="history_editor",
-    )
-    if _DELETE_COL not in edited_df.columns:
-        edited_df[_DELETE_COL] = False
-    _update_delete_marks_from_editor(edited_df)
-
-    updated_count, memory_warning = _sync_category_changes(original_df, edited_df, current_user_email)
-    if updated_count:
-        if memory_warning:
-            st.warning(memory_warning)
-        st.success(f"Saved category updates for {updated_count} transaction(s).")
-        st.session_state.pop("history_editor", None)
-        st.rerun()
-
-    delete_payload = _pending_delete_payload(edited_df)
-    if not delete_payload.empty:
-        st.warning(f"Are you sure you want to delete {len(delete_payload)} transaction(s)?")
-        confirm_col, cancel_col = st.columns(2)
-        with confirm_col:
-            if st.button("Confirm Delete", type="primary"):
-                deleted_count = _sync_deleted_rows(edited_df, current_user_email)
-                st.success(f"Deleted {deleted_count} transaction(s).")
-                st.session_state.pop("history_editor", None)
-                st.rerun()
-        with cancel_col:
-            if st.button("Cancel"):
-                cancel_df = edited_df.copy()
-                if _DELETE_COL in cancel_df.columns:
-                    cancel_df[_DELETE_COL] = False
-                updated_count, memory_warning = _sync_category_changes(original_df, cancel_df, current_user_email)
-                if memory_warning:
-                    st.warning(memory_warning)
-                if updated_count:
-                    st.success(f"Saved category updates for {updated_count} transaction(s).")
-                _clear_delete_marks(delete_payload)
-                st.session_state.pop("history_editor", None)
-                st.rerun()
-
-    csv = edited_df.drop(columns=[_DELETE_COL], errors="ignore").to_csv(index=False).encode("utf-8")
-    st.download_button("Download CSV", data=csv, mime="text/csv")
+    _render_history_results(df, current_user_email)
 
 
 def _render_account_top_right(user_email: str) -> None:

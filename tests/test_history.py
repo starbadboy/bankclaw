@@ -381,3 +381,255 @@ def test_history_page_cancel_delete_preserves_category_edit():
     mock_save.assert_called_once()
     mock_save_memory.assert_called_once()
     mock_delete.assert_not_called()
+
+
+def test_history_page_shows_legacy_categories_read_only_and_keeps_editor_options_active_only():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Legacy Merchant",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Archived Category",
+            "saved_at": "2026-03-01T01:00:00Z",
+        }
+    ])
+    edited_df = loaded_df.copy()
+    edited_df["_delete"] = False
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.category_definitions.get_effective_categories", return_value=["Food & Dining", "Pet Care", "Other"]), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("webapp.repository.save_transactions") as mock_save, \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.column_config.SelectboxColumn") as mock_selectbox_column, \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df) as mock_editor, \
+         patch("streamlit.dataframe") as mock_dataframe, \
+         patch("streamlit.download_button"), \
+         patch("streamlit.warning") as mock_warning, \
+         patch("streamlit.button", side_effect=lambda label, *args, **kwargs: label == "🔍 Load Transactions"):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_editor.assert_not_called()
+    mock_dataframe.assert_called_once()
+    mock_save.assert_not_called()
+    assert mock_selectbox_column.call_count == 0
+    mock_warning.assert_called_once()
+    assert "Archived Category" in mock_warning.call_args.args[0]
+
+
+def test_history_page_falls_back_to_default_categories_when_dynamic_lookup_fails():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Coffee",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Pet Care",
+            "saved_at": "2026-03-01T01:00:00Z",
+        }
+    ])
+    edited_df = loaded_df.copy()
+    edited_df["_delete"] = False
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.category_definitions.get_effective_categories", side_effect=RuntimeError("lookup failed")), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.column_config.SelectboxColumn") as mock_selectbox_column, \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df) as mock_editor, \
+         patch("streamlit.dataframe") as mock_dataframe, \
+         patch("streamlit.download_button") as mock_download, \
+         patch("streamlit.error") as mock_error, \
+         patch("streamlit.warning") as mock_warning, \
+         patch("streamlit.button", side_effect=lambda label, *args, **kwargs: label == "🔍 Load Transactions"):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_error.assert_called_once()
+    mock_warning.assert_called_once()
+    mock_editor.assert_not_called()
+    mock_dataframe.assert_called_once()
+    mock_download.assert_called_once()
+    assert mock_selectbox_column.call_count == 0
+
+
+def test_history_page_keeps_active_rows_editable_while_legacy_rows_are_read_only():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    loaded_df = pd.DataFrame([
+        {
+            "date": "2026-03-01",
+            "description": "Coffee",
+            "amount": -5.5,
+            "bank": "DBS",
+            "category": "Food & Dining",
+            "saved_at": "2026-03-01T01:00:00Z",
+        },
+        {
+            "date": "2026-03-02",
+            "description": "Legacy Merchant",
+            "amount": -15.0,
+            "bank": "DBS",
+            "category": "Archived Category",
+            "saved_at": "2026-03-02T01:00:00Z",
+        },
+    ])
+    edited_df = loaded_df.iloc[[0]].copy()
+    edited_df["_delete"] = False
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.category_definitions.get_effective_categories", return_value=["Food & Dining", "Pet Care", "Other"]), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=loaded_df), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.column_config.SelectboxColumn") as mock_selectbox_column, \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.selectbox", return_value="All"), \
+         patch("streamlit.data_editor", return_value=edited_df) as mock_editor, \
+         patch("streamlit.dataframe") as mock_dataframe, \
+         patch("streamlit.download_button"), \
+         patch("streamlit.warning") as mock_warning, \
+         patch("streamlit.button", side_effect=lambda label, *args, **kwargs: label == "🔍 Load Transactions"):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_editor.assert_called_once()
+    editor_df = mock_editor.call_args.args[0]
+    assert len(editor_df) == 1
+    assert list(editor_df["category"]) == ["Food & Dining"]
+    mock_dataframe.assert_called_once()
+    legacy_df = mock_dataframe.call_args.args[0]
+    assert len(legacy_df) == 1
+    assert list(legacy_df["category"]) == ["Archived Category"]
+    assert "Archived Category" not in mock_selectbox_column.call_args.kwargs["options"]
+    mock_warning.assert_called_once()
+
+
+def _make_custom_category_df(names: list[str]) -> "pd.DataFrame":
+    import pandas as pd  # noqa: PLC0415
+    return pd.DataFrame([
+        {
+            "user_email": "demo@example.com",
+            "name": name,
+            "normalized_name": name.lower(),
+            "is_active": True,
+            "created_at": "2026-03-01T00:00:00Z",
+            "updated_at": "2026-03-01T00:00:00Z",
+        }
+        for name in names
+    ])
+
+
+def test_category_manager_renders_active_custom_categories():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    custom_cats_df = _make_custom_category_df(["Pet Care", "Gym"])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_custom_categories", return_value=custom_cats_df) as mock_get, \
+         patch("webapp.repository.save_custom_category"), \
+         patch("webapp.repository.archive_custom_category"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander") as mock_expander, \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.text_input", return_value=""), \
+         patch("streamlit.button", return_value=False):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_get.assert_any_call("demo@example.com")
+    assert mock_expander.called
+
+
+def test_category_manager_add_category_calls_save():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    custom_cats_df = _make_custom_category_df([])
+
+    def _button_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        return label == "Add Category"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_custom_categories", return_value=custom_cats_df), \
+         patch("webapp.repository.save_custom_category") as mock_save, \
+         patch("webapp.repository.archive_custom_category"), \
+         patch("webapp.category_definitions.validate_custom_category_name", return_value="Pet Care"), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander", return_value=MagicMock(__enter__=lambda s: s, __exit__=MagicMock(return_value=False))), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.text_input", return_value="Pet Care"), \
+         patch("streamlit.success"), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.button", side_effect=_button_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_save.assert_called_once_with("Pet Care", "demo@example.com")
+
+
+def test_category_manager_archive_category_calls_archive():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    custom_cats_df = _make_custom_category_df(["Pet Care"])
+
+    def _button_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        return label == "Archive" and kwargs.get("key", "").endswith("Pet Care")
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_custom_categories", return_value=custom_cats_df), \
+         patch("webapp.repository.save_custom_category"), \
+         patch("webapp.repository.archive_custom_category") as mock_archive, \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander", return_value=MagicMock(__enter__=lambda s: s, __exit__=MagicMock(return_value=False))), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.text_input", return_value=""), \
+         patch("streamlit.success"), \
+         patch("streamlit.rerun"), \
+         patch("streamlit.button", side_effect=_button_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_archive.assert_called_once_with("Pet Care", "demo@example.com")
+
+
+def test_category_manager_invalid_name_shows_error():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "3_history.py"
+    custom_cats_df = _make_custom_category_df([])
+
+    def _button_effect(label, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003
+        return label == "Add Category"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("webapp.repository.get_custom_categories", return_value=custom_cats_df), \
+         patch("webapp.repository.save_custom_category") as mock_save, \
+         patch("webapp.repository.archive_custom_category"), \
+         patch("webapp.category_definitions.validate_custom_category_name", side_effect=ValueError("Category name already exists")), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander", return_value=MagicMock(__enter__=lambda s: s, __exit__=MagicMock(return_value=False))), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2026, 3, 1), date(2026, 3, 5)]), \
+         patch("streamlit.text_input", return_value="Food & Dining"), \
+         patch("streamlit.error") as mock_error, \
+         patch("streamlit.button", side_effect=_button_effect):
+        module_globals = runpy.run_path(str(page_path))
+        module_globals["history_page"]()
+
+    mock_save.assert_not_called()
+    mock_error.assert_called_once()
+    assert "already exists" in mock_error.call_args.args[0]

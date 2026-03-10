@@ -631,7 +631,42 @@ def test_upload_dialog_process_passes_user_email_to_categorizer():
         dialog_fn.__globals__["categorize_transactions"] = categorize_mock
         dialog_fn("demo@example.com")
 
-    categorize_mock.assert_called_once_with(raw_df, user_email="demo@example.com")
+    categorize_mock.assert_called_once()
+    assert categorize_mock.call_args.kwargs["user_email"] == "demo@example.com"
+    assert "allowed_categories" in categorize_mock.call_args.kwargs
+
+
+def test_upload_dialog_process_passes_effective_categories_to_categorizer():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    raw_df = pd.DataFrame([{"date": "2024-01-10", "description": "Salary", "amount": 5000.0, "bank": "DBS"}])
+    categorized_df = raw_df.assign(category=["Income"])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.file_uploader", return_value=[MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        dialog_fn.__globals__["st"].session_state = {}
+        dialog_fn.__globals__["st"].button = MagicMock(side_effect=[True, False])
+        dialog_fn.__globals__["process_files"] = MagicMock(return_value=[MagicMock()])
+        dialog_fn.__globals__["create_df"] = MagicMock(return_value=raw_df)
+        dialog_fn.__globals__["get_effective_categories"] = MagicMock(return_value=["Income", "Pet Care", "Other"])
+        categorize_mock = MagicMock(return_value=categorized_df)
+        dialog_fn.__globals__["categorize_transactions"] = categorize_mock
+        dialog_fn("demo@example.com")
+
+    categorize_mock.assert_called_once_with(
+        raw_df,
+        user_email="demo@example.com",
+        allowed_categories=["Income", "Pet Care", "Other"],
+    )
 
 
 def test_upload_review_save_persists_only_manual_category_changes_to_memory():
@@ -686,6 +721,150 @@ def test_upload_review_save_persists_only_manual_category_changes_to_memory():
     assert saved_memory_df.iloc[0]["category"] == "Other"
     assert save_memory_mock.call_args.kwargs["user_email"] == "demo@example.com"
     assert save_memory_mock.call_args.kwargs["source"] == "manual"
+
+
+def test_upload_review_uses_effective_categories_in_editor():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    review_df = pd.DataFrame([
+        {
+            "date": pd.Timestamp("2026-03-01"),
+            "description": "TEST",
+            "amount": 1.23,
+            "bank": "DBS",
+            "category": "Other",
+        }
+    ])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.column_config.SelectboxColumn") as mock_selectbox_column, \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        st_obj = dialog_fn.__globals__["st"]
+        st_obj.session_state = {"viz_upload_review_df": review_df}
+        st_obj.data_editor = MagicMock(return_value=review_df)
+        dialog_fn.__globals__["get_effective_categories"] = MagicMock(return_value=["Food & Dining", "Pet Care", "Other"])
+
+        dialog_fn("demo@example.com")
+
+    assert "Pet Care" in mock_selectbox_column.call_args.kwargs["options"]
+
+
+def test_upload_dialog_shows_error_when_effective_category_lookup_fails():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.error") as mock_error, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        dialog_fn.__globals__["get_effective_categories"] = MagicMock(side_effect=RuntimeError("lookup failed"))
+        dialog_fn.__globals__["st"].session_state = {}
+        dialog_fn("demo@example.com")
+
+    mock_error.assert_called_once_with("Failed to load category options: lookup failed")
+
+
+def test_upload_review_blocks_save_when_live_category_validation_fails():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    review_df = pd.DataFrame([
+        {
+            "date": pd.Timestamp("2026-03-01"),
+            "description": "TEST",
+            "amount": 1.23,
+            "bank": "DBS",
+            "category": "Pet Care",
+        }
+    ])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.column_config.SelectboxColumn") as mock_selectbox_column, \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.warning") as mock_warning, \
+         patch("streamlit.rerun") as mock_rerun, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        st_obj = dialog_fn.__globals__["st"]
+        st_obj.session_state = {
+            "viz_upload_review_df": review_df,
+            "viz_upload_review_categories": ["Food & Dining", "Pet Care", "Other"],
+        }
+        st_obj.data_editor = MagicMock(return_value=review_df)
+        dialog_fn.__globals__["get_effective_categories"] = MagicMock(side_effect=RuntimeError("lookup failed"))
+
+        dialog_fn("demo@example.com")
+
+    mock_warning.assert_called_once()
+    st_obj.data_editor.assert_not_called()
+    assert mock_selectbox_column.call_count == 0
+    mock_rerun.assert_not_called()
+
+
+def test_upload_review_blocks_save_and_requires_reprocess_when_categories_change():
+    page_path = Path(__file__).parent.parent / "webapp" / "pages" / "1_visualizations.py"
+    review_df = pd.DataFrame([
+        {
+            "date": pd.Timestamp("2026-03-01"),
+            "description": "TEST",
+            "amount": 1.23,
+            "bank": "DBS",
+            "category": "Pet Care",
+        }
+    ])
+
+    with patch("webapp.auth.require_authentication", return_value="demo@example.com"), \
+         patch("streamlit.dialog", lambda *args, **kwargs: (lambda func: func)), \
+         patch("streamlit.markdown"), \
+         patch("streamlit.caption"), \
+         patch("streamlit.expander"), \
+         patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]), \
+         patch("streamlit.date_input", side_effect=[date(2024, 1, 1), date(2024, 1, 31)]), \
+         patch("streamlit.button", return_value=False), \
+         patch("streamlit.warning") as mock_warning, \
+         patch("streamlit.rerun") as mock_rerun, \
+         patch("webapp.repository.get_transactions_by_date_range", return_value=pd.DataFrame()):
+        module_globals = runpy.run_path(str(page_path))
+        dialog_fn = module_globals["_show_upload_dialog"]
+        st_obj = dialog_fn.__globals__["st"]
+        st_obj.session_state = {
+            "viz_upload_review_df": review_df,
+            "viz_upload_review_categories": ["Food & Dining", "Pet Care", "Other"],
+        }
+        st_obj.data_editor = MagicMock(return_value=review_df)
+        dialog_fn.__globals__["get_effective_categories"] = MagicMock(
+            return_value=["Food & Dining", "Travel", "Other"]
+        )
+        dialog_fn.__globals__["save_transactions"] = MagicMock()
+        dialog_fn.__globals__["st"].button = MagicMock(side_effect=[False, False])
+
+        dialog_fn("demo@example.com")
+
+    st_obj.data_editor.assert_not_called()
+    dialog_fn.__globals__["save_transactions"].assert_not_called()
+    mock_warning.assert_called_once()
+    assert "reprocess" in mock_warning.call_args.args[0].lower()
+    mock_rerun.assert_not_called()
 
 
 def test_upload_review_save_warns_when_memory_update_fails():

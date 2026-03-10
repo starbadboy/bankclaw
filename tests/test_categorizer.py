@@ -261,3 +261,74 @@ def test_categorize_does_not_reuse_memory_for_generic_payment_wording(monkeypatc
 
     assert list(result["category"]) == ["Other"]
     mock_client.chat.completions.create.assert_called_once()
+
+
+def test_categorize_uses_allowed_categories_for_prompt_and_output_validation(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "DOG GROOMER", "amount": -45.00, "bank": "DBS"},
+    ])
+    allowed_categories = ["Transport", "Pet Care", "Other"]
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Pet Care"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(df, allowed_categories=allowed_categories)
+
+    assert list(result["category"]) == ["Pet Care"]
+    system_prompt = mock_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+    assert "Pet Care" in system_prompt
+    assert "Food & Dining" not in system_prompt
+
+
+def test_categorize_ignores_memory_category_not_in_allowed_categories(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "DOG GROOMER", "amount": -45.00, "bank": "DBS"},
+    ])
+    memory_df = pd.DataFrame([
+        {
+            "normalized_description": "dog groomer",
+            "last_raw_description": "DOG GROOMER",
+            "category": "Archived Category",
+            "source": "manual",
+            "updated_at": "2026-03-05T00:00:00Z",
+        }
+    ])
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Other"
+    mock_completion = MagicMock()
+    mock_completion.choices = [mock_choice]
+
+    with patch("webapp.categorizer.get_category_memory", return_value=memory_df), \
+         patch("webapp.categorizer.OpenAI") as MockOpenAI:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        MockOpenAI.return_value = mock_client
+
+        result = categorize_transactions(
+            df,
+            user_email="user@example.com",
+            allowed_categories=["Transport", "Other"],
+        )
+
+    assert list(result["category"]) == ["Other"]
+    mock_client.chat.completions.create.assert_called_once()
+
+
+def test_categorize_requires_other_in_allowed_categories(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-key")
+    df = pd.DataFrame([
+        {"date": "2024-01-15", "description": "DOG GROOMER", "amount": -45.00, "bank": "DBS"},
+    ])
+
+    with pytest.raises(ValueError, match="allowed_categories must include 'Other'"):
+        categorize_transactions(df, allowed_categories=["Transport", "Pet Care"])

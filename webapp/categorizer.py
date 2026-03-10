@@ -4,28 +4,10 @@ from difflib import SequenceMatcher
 import pandas as pd
 from openai import OpenAI
 
+from webapp.category_definitions import DEFAULT_CATEGORIES
 from webapp.repository import get_category_memory, normalize_description
 
-VALID_CATEGORIES = [
-    "Food & Dining",
-    "Transport",
-    "Shopping",
-    "Entertainment",
-    "Utilities",
-    "Healthcare",
-    "Travel",
-    "Income",
-    "Transfer",
-    "Other",
-]
-
-_SYSTEM_PROMPT = """You are a bank transaction categoriser. Given a list of bank transaction descriptions,
-return exactly one category per line in the same order. Output ONLY the category names, one per line, nothing else.
-
-Valid categories: {categories}
-""".format(
-    categories=", ".join(VALID_CATEGORIES)
-)
+VALID_CATEGORIES = DEFAULT_CATEGORIES
 _MEMORY_MATCH_THRESHOLD = 0.70
 _GENERIC_MEMORY_TOKENS = {
     "fast",
@@ -38,7 +20,17 @@ _GENERIC_MEMORY_TOKENS = {
 }
 
 
-def _sanitize_categories(raw_text: str, expected_count: int) -> list[str]:
+def _build_system_prompt(valid_categories: list[str]) -> str:
+    return """You are a bank transaction categoriser. Given a list of bank transaction descriptions,
+return exactly one category per line in the same order. Output ONLY the category names, one per line, nothing else.
+
+Valid categories: {categories}
+""".format(
+        categories=", ".join(valid_categories)
+    )
+
+
+def _sanitize_categories(raw_text: str, expected_count: int, valid_categories: list[str]) -> list[str]:
     raw_lines = raw_text.strip().splitlines()
     categories = []
     for line in raw_lines:
@@ -46,7 +38,7 @@ def _sanitize_categories(raw_text: str, expected_count: int) -> list[str]:
         # Strip leading numbering like "1. " if model adds it
         if ". " in line:
             line = line.split(". ", 1)[-1].strip()
-        categories.append(line if line in VALID_CATEGORIES else "Other")
+        categories.append(line if line in valid_categories else "Other")
 
     # Pad or truncate to match expected batch size
     while len(categories) < expected_count:
@@ -62,7 +54,16 @@ def _token_overlap_ratio(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / min(len(left_tokens), len(right_tokens))
 
 
-def _match_memory_category(description: str, memory_df: pd.DataFrame) -> str | None:
+def _is_better_memory_match(score: float, updated_at: str, best_score: float, best_updated_at: str) -> bool:
+    return score > best_score or (score == best_score and updated_at > best_updated_at)
+
+
+def _valid_memory_category(raw_category: object, valid_categories: list[str]) -> str | None:
+    category = str(raw_category)
+    return category if category in valid_categories else None
+
+
+def _match_memory_category(description: str, memory_df: pd.DataFrame, valid_categories: list[str]) -> str | None:
     if memory_df.empty:
         return None
 
@@ -72,7 +73,7 @@ def _match_memory_category(description: str, memory_df: pd.DataFrame) -> str | N
 
     exact_matches = memory_df.loc[memory_df["normalized_description"] == normalized_description]
     if not exact_matches.empty:
-        return str(exact_matches.iloc[-1]["category"])
+        return _valid_memory_category(exact_matches.iloc[-1]["category"], valid_categories)
 
     best_category = None
     best_score = 0.0
@@ -89,10 +90,15 @@ def _match_memory_category(description: str, memory_df: pd.DataFrame) -> str | N
         if token_overlap < _MEMORY_MATCH_THRESHOLD:
             continue
 
-        if score > best_score or (score == best_score and updated_at > best_updated_at):
-            best_score = score
-            best_category = str(row["category"])
-            best_updated_at = updated_at
+        candidate_category = _valid_memory_category(row["category"], valid_categories)
+        if candidate_category is None:
+            continue
+        if not _is_better_memory_match(score, updated_at, best_score, best_updated_at):
+            continue
+
+        best_score = score
+        best_category = candidate_category
+        best_updated_at = updated_at
 
     if best_score >= _MEMORY_MATCH_THRESHOLD:
         return best_category
@@ -104,10 +110,14 @@ def categorize_transactions(
     df: pd.DataFrame,
     batch_size: int = 75,
     user_email: str | None = None,
+    allowed_categories: list[str] | None = None,
 ) -> pd.DataFrame:
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than 0")
 
+    valid_categories = allowed_categories or VALID_CATEGORIES
+    if "Other" not in valid_categories:
+        raise ValueError("allowed_categories must include 'Other'")
     try:
         memory_df = get_category_memory(user_email) if user_email else pd.DataFrame()
     except Exception:  # pylint: disable=broad-except  # noqa: BLE001
@@ -118,7 +128,7 @@ def categorize_transactions(
     unmatched_indices: list[int] = []
 
     for idx, description in enumerate(descriptions):
-        matched_category = _match_memory_category(str(description), memory_df)
+        matched_category = _match_memory_category(str(description), memory_df, valid_categories)
         if matched_category is None:
             unmatched_indices.append(idx)
             unmatched_descriptions.append(str(description))
@@ -143,7 +153,7 @@ def categorize_transactions(
         completion = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "system", "content": _build_system_prompt(valid_categories)},
                 {"role": "user", "content": user_content},
             ],
             temperature=0.0,
@@ -151,6 +161,7 @@ def categorize_transactions(
         batch_categories = _sanitize_categories(
             completion.choices[0].message.content,
             expected_count=len(batch_descriptions),
+            valid_categories=valid_categories,
         )
         for original_idx, category in zip(batch_indices, batch_categories, strict=False):
             categories[original_idx] = category
