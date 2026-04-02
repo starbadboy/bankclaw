@@ -24,7 +24,7 @@ from webapp.helpers import create_df, parse_bank_statement, show_df
 from webapp.logo import logo
 from webapp.models import ProcessedFile
 from webapp.repository import save_transactions
-from webapp.user_repository import authenticate_user, create_user
+from webapp.user_repository import authenticate_user, create_user, update_password
 
 # Load environment variables from .env file
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -234,7 +234,7 @@ def _show_auth_screen() -> None:
     st.subheader("Welcome back")
     st.caption("Sign in to continue, or create an account to keep your own saved transaction history.")
 
-    tab_login, tab_register = st.tabs(["Login", "Register"])
+    tab_login, tab_register, tab_reset = st.tabs(["Login", "Register", "Reset Password"])
 
     with tab_login:
         login_email = st.text_input("Email", key="login_email")
@@ -268,6 +268,24 @@ def _show_auth_screen() -> None:
                 st.warning("Account already exists. Please log in instead.")
             else:
                 st.success("Registration successful. Please log in.")
+
+    with tab_reset:
+        reset_email = st.text_input("Email", key="reset_email")
+        reset_password = st.text_input("New Password", type="password", key="reset_password")
+        if st.button("Reset Password", key="reset_button"):
+            email = normalize_email(reset_email)
+            if "@" not in email:
+                st.error("Please enter a valid email.")
+                return
+            if len(reset_password) < 8:
+                st.error("Password must be at least 8 characters.")
+                return
+
+            updated = update_password(email, hash_password(reset_password))
+            if not updated:
+                st.error("Account not found. Cannot reset password.")
+            else:
+                st.success("Password reset successful. Please log in with your new password.")
 
 
 def _set_persistent_auth(email: str) -> None:

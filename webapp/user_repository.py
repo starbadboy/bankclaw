@@ -34,3 +34,13 @@ def authenticate_user(email: str) -> dict | None:
     db = get_db()
     collection = db[_COLLECTION]
     return collection.find_one({"email": email}, {"_id": 0})
+
+
+def update_password(email: str, password_hash: str) -> bool:
+    db = get_db()
+    collection = db[_COLLECTION]
+    result = collection.update_one(
+        {"email": email},
+        {"$set": {"password_hash": password_hash}}
+    )
+    return result.modified_count > 0
