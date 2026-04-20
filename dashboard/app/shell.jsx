@@ -1,0 +1,803 @@
+// App shell — sidebar, topbar, drawer, tweaks, router
+const { useState: useStateApp, useEffect: useEffectApp, useCallback: useCallbackApp } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "density": "comfortable",
+  "accent": "copper",
+  "theme": "paper",
+  "privacy": false
+}/*EDITMODE-END*/;
+
+const ACCENTS = {
+  copper: { name: "Copper", swatch: "oklch(0.5 0.14 35)", css: "oklch(0.42 0.14 35)", css2: "oklch(0.55 0.14 35)" },
+  olive: { name: "Olive", swatch: "oklch(0.45 0.09 145)", css: "oklch(0.4 0.1 145)", css2: "oklch(0.52 0.1 145)" },
+  ink: { name: "Ink", swatch: "oklch(0.22 0.01 70)", css: "oklch(0.22 0.01 70)", css2: "oklch(0.32 0.01 70)" },
+  gold: { name: "Gold", swatch: "oklch(0.72 0.12 85)", css: "oklch(0.55 0.12 85)", css2: "oklch(0.65 0.12 85)" },
+  cobalt: { name: "Cobalt", swatch: "oklch(0.42 0.12 255)", css: "oklch(0.42 0.12 255)", css2: "oklch(0.52 0.12 255)" },
+};
+
+// ── Shared form field helper ────────────────────────────────────────────────
+
+function _FormField({ label, type = "text", value, onChange, placeholder }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display: "block", fontSize: 11, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>
+        {label}
+      </label>
+      <input
+        type={type} required value={value} onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 14, outline: "none" }}
+      />
+    </div>
+  );
+}
+
+function _AuthError({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{ marginBottom: 16, padding: "10px 12px", background: "rgba(180,50,50,0.08)", border: "1px solid rgba(180,50,50,0.2)", borderRadius: 4, fontSize: 13, color: "var(--debit)" }}>
+      {msg}
+    </div>
+  );
+}
+
+function _AuthSuccess({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{ marginBottom: 16, padding: "10px 12px", background: "rgba(50,140,50,0.08)", border: "1px solid rgba(50,140,50,0.2)", borderRadius: 4, fontSize: 13, color: "var(--credit)" }}>
+      {msg}
+    </div>
+  );
+}
+
+// ── Login page ─────────────────────────────────────────────────────────────
+
+function LoginPage({ onLogin }) {
+  const [mode, setMode] = useStateApp("login"); // login | reset
+  const [email, setEmail] = useStateApp("");
+  const [password, setPassword] = useStateApp("");
+  const [newPassword, setNewPassword] = useStateApp("");
+  const [error, setError] = useStateApp("");
+  const [success, setSuccess] = useStateApp("");
+  const [loading, setLoading] = useStateApp(false);
+
+  const switchMode = (m) => { setMode(m); setError(""); setSuccess(""); };
+
+  const submitLogin = async (e) => {
+    e.preventDefault();
+    setError(""); setSuccess("");
+    setLoading(true);
+    try {
+      await apiLogin(email, password);
+      onLogin();
+    } catch (err) {
+      setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitReset = async (e) => {
+    e.preventDefault();
+    setError(""); setSuccess("");
+    setLoading(true);
+    try {
+      await apiResetPassword(email, newPassword);
+      setSuccess("Password reset. You can now sign in.");
+      switchMode("login");
+    } catch (err) {
+      setError(err.message || "Reset failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cardStyle = { width: 360, padding: "48px 40px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 2px 24px rgba(0,0,0,0.08)" };
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--paper)", fontFamily: "var(--sans)" }}>
+      <div style={cardStyle}>
+        <div style={{ marginBottom: 32, textAlign: "center" }}>
+          <div style={{ fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 28, color: "var(--ink-1)", letterSpacing: "-0.01em" }}>
+            Bankclaw
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 6 }}>
+            {mode === "login" ? "Private Ledger" : "Reset Password"}
+          </div>
+        </div>
+
+        {mode === "login" && (
+          <form onSubmit={submitLogin}>
+            <_FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+            <_FormField label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+            <_AuthError msg={error} />
+            <_AuthSuccess msg={success} />
+            <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <button type="button" onClick={() => switchMode("reset")} style={{ background: "none", border: "none", fontSize: 12, color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
+                Forgot password?
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === "reset" && (
+          <form onSubmit={submitReset}>
+            <_FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+            <_FormField label="New Password" type="password" value={newPassword} onChange={setNewPassword} placeholder="Min. 8 characters" />
+            <_AuthError msg={error} />
+            <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "Resetting…" : "Reset password"}
+            </button>
+            <div style={{ marginTop: 16, textAlign: "center" }}>
+              <button type="button" onClick={() => switchMode("login")} style={{ background: "none", border: "none", fontSize: 12, color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
+                Back to sign in
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Change-password modal (authenticated) ──────────────────────────────────
+
+function ChangePasswordModal({ onClose }) {
+  const [current, setCurrent] = useStateApp("");
+  const [next, setNext] = useStateApp("");
+  const [confirm, setConfirm] = useStateApp("");
+  const [error, setError] = useStateApp("");
+  const [success, setSuccess] = useStateApp("");
+  const [loading, setLoading] = useStateApp(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError(""); setSuccess("");
+    if (next !== confirm) { setError("New passwords don't match"); return; }
+    setLoading(true);
+    try {
+      await apiChangePassword(current, next);
+      setSuccess("Password changed. You can close this window.");
+      setCurrent(""); setNext(""); setConfirm("");
+    } catch (err) {
+      setError(err.message || "Change failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200 }} />
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 201, width: 360, padding: "36px 32px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <div style={{ fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 20, color: "var(--ink-1)" }}>Change Password</div>
+          <button className="icon-btn" onClick={onClose}><Icon name="close" size={14} /></button>
+        </div>
+        <form onSubmit={submit}>
+          <_FormField label="Current Password" type="password" value={current} onChange={setCurrent} placeholder="••••••••" />
+          <_FormField label="New Password" type="password" value={next} onChange={setNext} placeholder="Min. 8 characters" />
+          <_FormField label="Confirm New Password" type="password" value={confirm} onChange={setConfirm} placeholder="••••••••" />
+          <_AuthError msg={error} />
+          <_AuthSuccess msg={success} />
+          <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+            {loading ? "Saving…" : "Update password"}
+          </button>
+        </form>
+      </div>
+    </>
+  );
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────
+
+function Sidebar({ page, onNav, onSignOut, onChangePassword }) {
+  const email = getEmail() || "";
+  const initials = email
+    ? email.slice(0, 2).toUpperCase()
+    : "?";
+
+  const items = [
+    { id: "overview", label: "Overview", icon: "home" },
+    { id: "transactions", label: "Transactions", icon: "list" },
+    { id: "insights", label: "Insights", icon: "pie" },
+    { id: "import", label: "Import", icon: "upload" },
+  ];
+  const meta = [
+    { id: "history", label: "History", icon: "clock" },
+    { id: "categories", label: "Categories", icon: "sparkle" },
+    { id: "banks", label: "Connected banks", icon: "file" },
+  ];
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark">B</div>
+        <div>
+          <div className="brand-name">Bankclaw</div>
+          <div className="brand-sub">Private Ledger</div>
+        </div>
+      </div>
+
+      <div className="nav-group">
+        <div className="nav-label">Workspace</div>
+        {items.map((i) => (
+          <div key={i.id} className={"nav-item" + (page === i.id ? " active" : "")}
+            onClick={() => onNav(i.id)}>
+            <Icon name={i.icon} size={15} stroke={1.5} />
+            <span>{i.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="nav-group">
+        <div className="nav-label">Library</div>
+        {meta.map((i) => (
+          <div key={i.id} className="nav-item" onClick={() => onNav(i.id)}>
+            <Icon name={i.icon} size={15} stroke={1.5} />
+            <span>{i.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="nav-spacer"></div>
+
+      <div className="user-card">
+        <div className="avatar">{initials}</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="user-name">{email.split("@")[0] || "User"}</div>
+          <div className="user-email">{email}</div>
+        </div>
+        <button
+          className="icon-btn" title="Change password"
+          onClick={onChangePassword}
+          style={{ flexShrink: 0 }}
+        >
+          <Icon name="settings" size={14} />
+        </button>
+        <button
+          className="icon-btn" title="Sign out"
+          onClick={onSignOut}
+          style={{ flexShrink: 0 }}
+        >
+          <Icon name="close" size={14} />
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav }) {
+  const crumbs = {
+    overview: ["Workspace", "Overview"],
+    transactions: ["Workspace", "Transactions"],
+    insights: ["Workspace", "Insights"],
+    import: ["Workspace", "Import"],
+    history: ["Library", "History"],
+    categories: ["Library", "Categories"],
+    banks: ["Library", "Connected banks"],
+  }[page] || ["Workspace", page];
+  return (
+    <div className="topbar">
+      <div className="crumbs">{crumbs[0]} · <b>{crumbs[1]}</b></div>
+      <div className="spacer"></div>
+      <div className="search">
+        <Icon name="search" size={14} />
+        <input placeholder="Search transactions, merchants, references…"
+          value={query} onChange={(e) => { setQuery(e.target.value); if (page !== "transactions") onNav("transactions"); }} />
+        <kbd>⌘K</kbd>
+      </div>
+      <button className="icon-btn" title={privacy ? "Reveal amounts" : "Hide amounts"} onClick={() => setPrivacy(!privacy)}>
+        <Icon name={privacy ? "eyeOff" : "eye"} size={15} />
+      </button>
+      <button className="icon-btn" title="Notifications"><Icon name="bell" size={15} /></button>
+      <button className="btn primary" onClick={() => onNav("import")}>
+        <Icon name="plus" size={12} stroke={2.2} /> Import
+      </button>
+    </div>
+  );
+}
+
+function Drawer({ tx, onClose, privacy }) {
+  const open = !!tx;
+  const cat = tx && CATEGORIES.find((c) => c.id === tx.category);
+  const bank = tx && BANKS.find((b) => b.id === tx.bank);
+  return (
+    <>
+      <div className={"drawer-backdrop" + (open ? " open" : "")} onClick={onClose}></div>
+      <div className={"drawer" + (open ? " open" : "")}>
+        <div className="drawer-hd">
+          <div>
+            <div className="page-kicker" style={{ margin: 0 }}>Transaction</div>
+            <div className="display" style={{ fontSize: 22 }}>{tx?.description || ""}</div>
+          </div>
+          <button className="icon-btn" onClick={onClose}><Icon name="close" size={14} /></button>
+        </div>
+        <div className="drawer-body">
+          {tx && (
+            <>
+              <div style={{ padding: "12px 0 24px", borderBottom: "1px solid var(--rule)" }}>
+                <div className="tag">Amount</div>
+                <div className={"display tnum " + (tx.amount > 0 ? "" : "")} style={{
+                  fontSize: 52, lineHeight: 1, marginTop: 4,
+                  color: tx.amount > 0 ? "var(--credit)" : "var(--debit)",
+                  filter: privacy ? "blur(10px)" : "none",
+                }}>
+                  {fmtSGD(tx.amount, privacy)}
+                </div>
+              </div>
+
+              <div className="kv">
+                <div className="k">Date</div><div>{fmtDate(tx.date, { long: true })} · {fmtDate(tx.date, { time: true })}</div>
+                <div className="k">Bank</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 3, background: bank.color, display: "inline-block" }}></span>
+                  {bank.name}
+                </div>
+                <div className="k">Category</div>
+                <div>
+                  <span className="chip" style={{ cursor: "default" }}>
+                    {cat.glyph} {cat.name}
+                  </span>
+                </div>
+                <div className="k">Reference</div>
+                <div className="mono" style={{ fontSize: 12 }}>{tx.reference}</div>
+                <div className="k">Statement</div>
+                <div className="mono" style={{ fontSize: 12 }}>{bank.id}-{new Date(tx.date).toISOString().slice(0,7)}.pdf</div>
+              </div>
+
+              <div style={{ padding: "18px 0", borderBottom: "1px solid var(--rule)" }}>
+                <div className="tag" style={{ marginBottom: 10 }}>AI summary</div>
+                <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
+                  {tx.amount > 0
+                    ? `Credit matched to "${cat.name}" with high confidence.`
+                    : `Categorised as ${cat.name}.`}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+                <button className="btn">Recategorise</button>
+                <button className="btn">Split</button>
+                <button className="btn ghost" style={{ marginLeft: "auto", color: "var(--debit)" }}>Delete</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function TweaksPanel({ open, onClose, state, setState, saveState }) {
+  const set = (k, v) => { const next = { ...state, [k]: v }; setState(next); saveState(next); };
+  return (
+    <div className={"tweaks" + (open ? " open" : "")}>
+      <div className="tweaks-hd">
+        <h4>Tweaks</h4>
+        <button className="icon-btn" style={{ width: 26, height: 26 }} onClick={onClose}><Icon name="close" size={12} /></button>
+      </div>
+      <div className="tweaks-body">
+        <div className="tw-row">
+          <div className="lab">Theme</div>
+          <div className="tw-opts">
+            {[["paper","Paper"],["noir","Noir"]].map(([k,v]) => (
+              <button key={k} className={(state.theme || "paper") === k ? "on" : ""} onClick={() => set("theme", k)}>{v}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="tw-row">
+          <div className="lab">Density</div>
+          <div className="tw-opts">
+            {["comfortable","compact"].map((d) => (
+              <button key={d} className={state.density === d ? "on" : ""} onClick={() => set("density", d)}>
+                {d[0].toUpperCase()+d.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="tw-row">
+          <div className="lab">Accent</div>
+          <div className="tw-swatches">
+            {Object.entries(ACCENTS).map(([k, v]) => (
+              <div key={k} className={"tw-sw" + (state.accent === k ? " on" : "")}
+                style={{ background: v.swatch }} onClick={() => set("accent", k)} title={v.name}></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="tw-row">
+          <div className="lab">Privacy mode</div>
+          <div className="tw-opts">
+            <button className={!state.privacy ? "on" : ""} onClick={() => set("privacy", false)}>Off</button>
+            <button className={state.privacy ? "on" : ""} onClick={() => set("privacy", true)}>Blurred</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============ ROOT APP ============ */
+function App() {
+  const [authed, setAuthed] = useStateApp(isLoggedIn());
+  const [transactions, setTransactions] = useStateApp([]);
+  const [txLoading, setTxLoading] = useStateApp(false);
+
+  const [tweaks, setTweaks] = useStateApp(() => {
+    try { const s = JSON.parse(localStorage.getItem("bc_tweaks") || "null"); if (s) return { ...TWEAK_DEFAULTS, ...s }; } catch {}
+    return TWEAK_DEFAULTS;
+  });
+  const saveTweaks = (t) => localStorage.setItem("bc_tweaks", JSON.stringify(t));
+
+  const [page, setPage] = useStateApp(() => localStorage.getItem("bc_page") || "overview");
+  useEffectApp(() => localStorage.setItem("bc_page", page), [page]);
+
+  const [query, setQuery] = useStateApp("");
+  const [openTx, setOpenTx] = useStateApp(null);
+  const [tweaksOpen, setTweaksOpen] = useStateApp(false);
+  const [editMode, setEditMode] = useStateApp(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useStateApp(false);
+
+  const loadTransactions = useCallbackApp(async () => {
+    setTxLoading(true);
+    try {
+      const txs = await apiFetchTransactions();
+      setTransactions(txs);
+      // keep global TRANSACTIONS in sync for any legacy helpers that read window.TRANSACTIONS
+      window.TRANSACTIONS = txs;
+    } catch {}
+    setTxLoading(false);
+  }, []);
+
+  // Load transactions on first authed render
+  useEffectApp(() => {
+    if (authed) loadTransactions();
+  }, [authed]);
+
+  // Listen for 401 logout events from api.js
+  useEffectApp(() => {
+    const handler = () => { setAuthed(false); setTransactions([]); };
+    window.addEventListener("bc:logout", handler);
+    return () => window.removeEventListener("bc:logout", handler);
+  }, []);
+
+  // Apply accent + density to root
+  useEffectApp(() => {
+    const acc = ACCENTS[tweaks.accent] || ACCENTS.copper;
+    document.documentElement.style.setProperty("--accent", acc.css);
+    document.documentElement.style.setProperty("--accent-2", acc.css2);
+    document.documentElement.setAttribute("data-density", tweaks.density);
+    document.documentElement.setAttribute("data-privacy", tweaks.privacy ? "on" : "off");
+    document.documentElement.setAttribute("data-theme", tweaks.theme || "paper");
+  }, [tweaks]);
+
+  // Edit-mode protocol
+  useEffectApp(() => {
+    const handler = (e) => {
+      if (e.data?.type === "__activate_edit_mode") { setEditMode(true); setTweaksOpen(true); }
+      if (e.data?.type === "__deactivate_edit_mode") { setEditMode(false); setTweaksOpen(false); }
+    };
+    window.addEventListener("message", handler);
+    window.parent.postMessage({ type: "__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  const persistTweaks = (t) => {
+    saveTweaks(t);
+    try { window.parent.postMessage({ type: "__edit_mode_set_keys", edits: t }, "*"); } catch {}
+  };
+
+  const handleSignOut = async () => {
+    await apiLogout();
+    setAuthed(false);
+    setTransactions([]);
+    window.TRANSACTIONS = [];
+  };
+
+  const navigate = (p) => { setPage(p); setOpenTx(null); };
+
+  if (!authed) {
+    return <LoginPage onLogin={() => { setAuthed(true); }} />;
+  }
+
+  return (
+    <div className="app">
+      <Sidebar page={page} onNav={navigate} onSignOut={handleSignOut} onChangePassword={() => setChangePasswordOpen(true)} />
+      <main className="main">
+        <Topbar page={page} query={query} setQuery={setQuery}
+          privacy={tweaks.privacy}
+          setPrivacy={(v) => { const t = { ...tweaks, privacy: v }; setTweaks(t); saveTweaks(t); }}
+          onOpenTweaks={() => setTweaksOpen(true)} onNav={navigate} />
+
+        {page === "overview" && <OverviewPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} onOpenTx={setOpenTx} />}
+        {page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} />}
+        {page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
+        {page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} />}
+        {page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
+        {page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} />}
+        {page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
+      </main>
+
+      <Drawer tx={openTx} onClose={() => setOpenTx(null)} privacy={tweaks.privacy} />
+
+      {editMode && (
+        <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)}
+          state={tweaks} setState={setTweaks} saveState={persistTweaks} />
+      )}
+
+      {changePasswordOpen && <ChangePasswordModal onClose={() => setChangePasswordOpen(false)} />}
+
+      {txLoading && (
+        <div style={{ position: "fixed", bottom: 20, right: 20, padding: "8px 14px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 6, fontSize: 12, color: "var(--ink-3)", boxShadow: "0 2px 12px rgba(0,0,0,0.08)" }}>
+          Loading transactions…
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── History page ────────────────────────────────────────────────────────────
+// Transactions grouped by bank × month — shows the "statement view"
+
+function HistoryPage({ transactions, privacy, onOpenTx }) {
+  const { useMemo: useMemoH } = React;
+
+  const statements = useMemoH(() => {
+    const map = new Map();
+    transactions.forEach((t) => {
+      const month = t.date.slice(0, 7); // "YYYY-MM"
+      const key = `${t.bank}__${month}`;
+      if (!map.has(key)) map.set(key, { bank: t.bank, month, txs: [], income: 0, spend: 0 });
+      const s = map.get(key);
+      s.txs.push(t);
+      if (t.amount > 0) s.income += t.amount; else s.spend += -t.amount;
+    });
+    return [...map.values()].sort((a, b) => b.month.localeCompare(a.month) || a.bank.localeCompare(b.bank));
+  }, [transactions]);
+
+  return (
+    <div className="page">
+      <div className="page-kicker">Library</div>
+      <h1 className="page-title"><i>History.</i></h1>
+      <div className="page-sub">{statements.length} statement{statements.length !== 1 ? "s" : ""} across {new Set(transactions.map(t => t.bank)).size} banks.</div>
+      <div style={{ height: 28 }} />
+
+      {transactions.length === 0 && (
+        <div className="panel panel-pad" style={{ textAlign: "center", padding: "80px 32px" }}>
+          <div style={{ fontFamily: "Instrument Serif, serif", fontSize: 22, color: "var(--ink-3)" }}>No statements yet.</div>
+          <div style={{ fontSize: 13, color: "var(--ink-4)", marginTop: 8 }}>Import a PDF to see your statement history.</div>
+        </div>
+      )}
+
+      {statements.map((s) => {
+        const bank = BANKS.find((b) => b.id === s.bank);
+        const monthLabel = new Date(s.month + "-01").toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+        return (
+          <div key={`${s.bank}-${s.month}`} className="panel" style={{ marginBottom: 16 }}>
+            <div className="panel-hd">
+              <h3 style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: bank?.color, display: "inline-block" }}></span>
+                {bank?.name} · {monthLabel}
+              </h3>
+              <div className="tools" style={{ gap: 18, fontSize: 12, color: "var(--ink-3)" }}>
+                <span>{s.txs.length} transactions</span>
+                <span style={{ color: "var(--credit)" }}>+{fmtSGD(s.income, privacy)}</span>
+                <span style={{ color: "var(--debit)" }}>{fmtSGD(-s.spend, privacy)}</span>
+              </div>
+            </div>
+            <div className="ledger">
+              {s.txs.slice(0, 5).map((t) => {
+                const cat = CATEGORIES.find((c) => c.id === t.category);
+                return (
+                  <div key={t.id} className="row" onClick={() => onOpenTx(t)}>
+                    <div className="cell mono" style={{ color: "var(--ink-3)", fontSize: 12 }}>{fmtDate(t.date)}</div>
+                    <div className="cell desc"><div>{t.description}</div></div>
+                    <div className="cell num" style={{ justifyContent: "flex-end", color: "var(--ink-3)", fontSize: 12 }}>
+                      {cat?.glyph} {cat?.name}
+                    </div>
+                    <div className={"cell num amt " + (t.amount > 0 ? "credit" : "debit")}>{fmtSGD(t.amount, privacy)}</div>
+                  </div>
+                );
+              })}
+              {s.txs.length > 5 && (
+                <div style={{ padding: "10px 20px", fontSize: 12, color: "var(--ink-4)", borderTop: "1px solid var(--rule)" }}>
+                  +{s.txs.length - 5} more transactions in this statement
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Categories page ──────────────────────────────────────────────────────────
+
+function CategoriesPage({ transactions, privacy }) {
+  const { useState: useStateCAT, useMemo: useMemoCAT } = React;
+  const [newCat, setNewCat] = useStateCAT("");
+  const [customCats, setCustomCats] = useStateCAT([]);
+  const [saving, setSaving] = useStateCAT(false);
+  const [error, setError] = useStateCAT("");
+
+  React.useEffect(() => {
+    apiFetchCategories().then((cats) => {
+      const defaults = new Set(CATEGORIES.map(c => c.name));
+      setCustomCats(cats.filter(c => !defaults.has(c)));
+    }).catch(() => {});
+  }, []);
+
+  const spending = useMemoCAT(() => spendByCategory(transactions), [transactions]);
+  const topSpend = spending[0]?.total || 1;
+
+  const addCat = async (e) => {
+    e.preventDefault();
+    const name = newCat.trim();
+    if (!name) return;
+    setSaving(true); setError("");
+    try {
+      await apiAddCategory(name);
+      setCustomCats((prev) => [...prev, name]);
+      setNewCat("");
+    } catch (err) {
+      setError(err.message || "Failed to add");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeCat = async (name) => {
+    try {
+      await apiDeleteCategory(name);
+      setCustomCats((prev) => prev.filter(c => c !== name));
+    } catch {}
+  };
+
+  return (
+    <div className="page">
+      <div className="page-kicker">Library</div>
+      <h1 className="page-title"><i>Categories.</i></h1>
+      <div className="page-sub">Ten built-in categories plus your custom tags. Spending totals across all time.</div>
+      <div style={{ height: 28 }} />
+
+      <div className="grid-2">
+        <div className="panel">
+          <div className="panel-hd"><h3>Built-in categories</h3></div>
+          <div className="panel-pad" style={{ paddingTop: 8 }}>
+            {CATEGORIES.map((cat) => {
+              const s = spending.find(r => r.id === cat.id);
+              const pct = s ? Math.round((s.total / topSpend) * 100) : 0;
+              return (
+                <div key={cat.id} className="cat-row" style={{ paddingTop: 10, paddingBottom: 10 }}>
+                  <span className="cat-glyph">{cat.glyph}</span>
+                  <div style={{ flex: 1 }}>
+                    <div className="cat-name">{cat.name}</div>
+                    {s && <div className="cat-bar" style={{ "--w": `${pct}%`, marginTop: 4 }}></div>}
+                  </div>
+                  <div className="cat-amt" style={{ fontSize: 13 }}>
+                    {s ? fmtSGD(-s.total, privacy).replace("−","") : "—"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-hd"><h3>Custom categories</h3></div>
+          <div className="panel-pad">
+            <form onSubmit={addCat} style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              <input
+                value={newCat} onChange={(e) => setNewCat(e.target.value)}
+                placeholder="e.g. Gym, Hobbies, Kids…"
+                style={{ flex: 1, padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 13 }}
+              />
+              <button type="submit" className="btn primary" disabled={saving || !newCat.trim()}>Add</button>
+            </form>
+            {error && <div style={{ marginBottom: 12, fontSize: 12, color: "var(--debit)" }}>{error}</div>}
+
+            {customCats.length === 0 && (
+              <div style={{ fontSize: 13, color: "var(--ink-4)", padding: "24px 0", textAlign: "center" }}>
+                No custom categories yet. Add one above.
+              </div>
+            )}
+            {customCats.map((name) => (
+              <div key={name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--rule)" }}>
+                <span style={{ fontSize: 14 }}>• {name}</span>
+                <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => removeCat(name)}>Remove</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Connected banks page ─────────────────────────────────────────────────────
+
+function BanksPage({ transactions, privacy, onNav }) {
+  const { useMemo: useMemoB } = React;
+
+  const bankStats = useMemoB(() => {
+    const map = new Map();
+    transactions.forEach((t) => {
+      if (!map.has(t.bank)) map.set(t.bank, { id: t.bank, count: 0, income: 0, spend: 0, latest: "" });
+      const s = map.get(t.bank);
+      s.count++;
+      if (t.amount > 0) s.income += t.amount; else s.spend += -t.amount;
+      if (!s.latest || t.date > s.latest) s.latest = t.date;
+    });
+    return [...map.values()].sort((a, b) => b.count - a.count);
+  }, [transactions]);
+
+  return (
+    <div className="page">
+      <div className="page-kicker">Library</div>
+      <h1 className="page-title"><i>Connected banks.</i></h1>
+      <div className="page-sub">{bankStats.length} bank{bankStats.length !== 1 ? "s" : ""} with transaction data. Import more statements to add banks.</div>
+      <div style={{ height: 28 }} />
+
+      {bankStats.length === 0 && (
+        <div className="panel panel-pad" style={{ textAlign: "center", padding: "80px 32px" }}>
+          <div style={{ fontFamily: "Instrument Serif, serif", fontSize: 22, color: "var(--ink-3)" }}>No banks yet.</div>
+          <div style={{ fontSize: 13, color: "var(--ink-4)", marginTop: 8 }}>Import a PDF to see your banks here.</div>
+          <button className="btn primary" style={{ marginTop: 20 }} onClick={() => onNav("import")}>
+            <Icon name="upload" size={14} /> Import statement
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {bankStats.map((s) => {
+          const bank = BANKS.find((b) => b.id === s.id);
+          return (
+            <div key={s.id} className="panel panel-pad" style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 20, alignItems: "center" }}>
+              <div style={{ width: 44, height: 44, borderRadius: 8, background: bank?.color, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontFamily: "Instrument Serif, serif", fontSize: 15 }}>
+                {bank?.short}
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 500 }}>{bank?.name}</div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 3 }}>
+                  {s.count} transactions · last {fmtDate(s.latest)}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-4)", marginTop: 2 }}>
+                  <span style={{ color: "var(--credit)" }}>+{fmtSGD(s.income, privacy)}</span>
+                  {" · "}
+                  <span style={{ color: "var(--debit)" }}>{fmtSGD(-s.spend, privacy)}</span>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <button className="btn" onClick={() => onNav("import")}>
+                  <Icon name="upload" size={13} /> Import
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ height: 28 }} />
+      <div className="panel panel-pad" style={{ background: "oklch(0.97 0.01 35)" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Icon name="file" size={16} />
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>Add another bank</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>18 bank layouts supported — DBS, OCBC, UOB, Chase, SC, Maybank, HSBC, and more.</div>
+          </div>
+          <button className="btn primary" style={{ marginLeft: "auto", flexShrink: 0 }} onClick={() => onNav("import")}>
+            <Icon name="plus" size={13} /> Import PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { App, LoginPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, BanksPage });

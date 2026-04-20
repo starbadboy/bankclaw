@@ -15,6 +15,9 @@ dependencies = [
     "openai>=1.0.0",
     "python-dotenv>=1.2.2",
     "streamlit-plotly-events>=0.0.6",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
 ]
 name = "statement-sensei"
 version = "0.10.4"

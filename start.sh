@@ -1,14 +1,15 @@
 #!/bin/bash
 
-# Kill any existing Streamlit processes
-echo "🛑 Stopping existing Streamlit processes..."
+# Kill any existing server processes
+echo "Stopping existing server processes..."
+pkill -f "uvicorn webapp.api" 2>/dev/null || true
 pkill -f "streamlit run" 2>/dev/null || true
-sleep 2
+sleep 1
 
-# Start Streamlit
-echo "🚀 Starting Streamlit app..."
+# Start FastAPI + React dashboard
+echo "Starting Bankclaw API server..."
 cd "$(dirname "$0")"
-uv run streamlit run webapp/app.py --server.headless=true --server.port=8501
+uv run uvicorn webapp.api:app --host 0.0.0.0 --port 8501 --reload
 
 echo ""
-echo "✨ App is running at http://localhost:8501"
+echo "App is running at http://localhost:8501"
