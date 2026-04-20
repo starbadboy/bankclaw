@@ -1,51 +1,147 @@
 // Insights page — charts, top merchants, category deep-dive
-const { useMemo: useMemoIN } = React;
+const { useMemo: useMemoIN, useState: useStateIN } = React;
+
+// Detect recurring charges: same description appearing in 2+ distinct calendar months
+// with a consistent amount (within 5%). Returns sorted by amount desc.
+function detectRecurring(transactions) {
+  const map = new Map();
+  transactions.forEach((t) => {
+    if (t.amount >= 0) return; // expenses only
+    const key = t.description.trim().toLowerCase();
+    if (!map.has(key)) map.set(key, { name: t.description, entries: [] });
+    map.get(key).entries.push({ date: new Date(t.date), amount: -t.amount });
+  });
+
+  const results = [];
+  map.forEach(({ name, entries }) => {
+    if (entries.length < 2) return;
+    // Check spans at least 2 distinct months
+    const months = new Set(entries.map((e) => `${e.date.getFullYear()}-${e.date.getMonth()}`));
+    if (months.size < 2) return;
+    // Amount consistency: all within 5% of median
+    const amounts = entries.map((e) => e.amount).sort((a, b) => a - b);
+    const median = amounts[Math.floor(amounts.length / 2)];
+    if (!amounts.every((a) => Math.abs(a - median) / median < 0.05)) return;
+    // Estimate next charge: last occurrence + ~30 days
+    const last = entries.reduce((mx, e) => e.date > mx ? e.date : mx, entries[0].date);
+    const next = new Date(last); next.setDate(next.getDate() + 30);
+    results.push({ name, amt: median, next, freq: "Monthly" });
+  });
+
+  return results.sort((a, b) => b.amt - a.amt);
+}
+
+const _IN_RANGES = [
+  { id: "30d",  label: "Last 30 days" },
+  { id: "90d",  label: "Last 90 days" },
+  { id: "6m",   label: "Last 6 months" },
+  { id: "1y",   label: "Last year" },
+  { id: "all",  label: "All time" },
+];
+
+function insightsFilter(txns, rangeId) {
+  if (rangeId === "all") return txns;
+  const now = new Date();
+  const cutoff = new Date(now);
+  if (rangeId === "30d")  cutoff.setDate(cutoff.getDate() - 30);
+  if (rangeId === "90d")  cutoff.setDate(cutoff.getDate() - 90);
+  if (rangeId === "6m")   cutoff.setMonth(cutoff.getMonth() - 6);
+  if (rangeId === "1y")   cutoff.setFullYear(cutoff.getFullYear() - 1);
+  return txns.filter((t) => new Date(t.date) >= cutoff);
+}
 
 function InsightsPage({ transactions, privacy }) {
-  const byCat = useMemoIN(() => spendByCategory(transactions), [transactions]);
-  const totalSpend = byCat.reduce((s, c) => s + c.total, 0) || 1;
-  const catColors = ["oklch(0.45 0.09 145)", "oklch(0.48 0.11 35)", "oklch(0.55 0.09 250)", "oklch(0.6 0.12 70)", "oklch(0.52 0.1 310)", "oklch(0.62 0.1 200)", "oklch(0.58 0.12 20)", "oklch(0.5 0.08 90)", "oklch(0.55 0.08 170)", "oklch(0.5 0.02 70)"];
-  const segments = byCat.map((c, i) => ({ id: c.id, value: c.total, color: catColors[i % catColors.length], cat: c.cat }));
+  const [range, setRange] = useStateIN("6m");
+  const [showRangeMenu, setShowRangeMenu] = useStateIN(false);
+  const [excludedCats, setExcludedCats] = useStateIN(new Set());
 
-  // Monthly bars — last 6 months
+  const filtered = useMemoIN(() => insightsFilter(transactions, range), [transactions, range]);
+
+  const recurring = useMemoIN(() => detectRecurring(transactions), [transactions]);
+  const byCat = useMemoIN(() => spendByCategory(filtered), [filtered]);
+  const catColors = ["oklch(0.45 0.09 145)", "oklch(0.48 0.11 35)", "oklch(0.55 0.09 250)", "oklch(0.6 0.12 70)", "oklch(0.52 0.1 310)", "oklch(0.62 0.1 200)", "oklch(0.58 0.12 20)", "oklch(0.5 0.08 90)", "oklch(0.55 0.08 170)", "oklch(0.5 0.02 70)"];
+  const allSegments = byCat.map((c, i) => ({ id: c.id, value: c.total, color: catColors[i % catColors.length], cat: c.cat }));
+  const segments = allSegments.filter(s => !excludedCats.has(s.id));
+  const totalSpend = segments.reduce((s, c) => s + c.value, 0) || 1;
+
+  const toggleCat = (id) => setExcludedCats((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const activeRange = _IN_RANGES.find((r) => r.id === range);
+
+  // Monthly bars — driven by filtered range, showing up to 12 buckets
   const months = useMemoIN(() => {
-    const buckets = [];
-    const now = new Date();
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now); d.setMonth(d.getMonth() - i);
-      const y = d.getFullYear(), m = d.getMonth();
+    const bucketMap = new Map();
+    filtered.forEach((t) => {
+      const d = new Date(t.date);
+      const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,"0")}`;
       const label = d.toLocaleDateString("en-GB", { month: "short" }).toUpperCase();
-      let income = 0, spend = 0;
-      transactions.forEach((t) => {
-        const td = new Date(t.date);
-        if (td.getFullYear() === y && td.getMonth() === m) {
-          if (t.amount > 0) income += t.amount; else spend += -t.amount;
-        }
-      });
-      buckets.push({ label, income, spend });
-    }
-    return buckets;
-  }, [transactions]);
+      if (!bucketMap.has(key)) bucketMap.set(key, { key, label, income: 0, spend: 0 });
+      const b = bucketMap.get(key);
+      if (t.amount > 0) b.income += t.amount; else b.spend += -t.amount;
+    });
+    return [...bucketMap.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, v]) => v)
+      .slice(-12);
+  }, [filtered]);
 
   const topMerchants = useMemoIN(() => {
     const map = new Map();
-    transactions.forEach((t) => {
+    filtered.forEach((t) => {
       if (t.amount >= 0) return;
       const k = t.description;
       if (!map.has(k)) map.set(k, { name: k, count: 0, total: 0, cat: t.category });
       const o = map.get(k); o.count++; o.total += -t.amount;
     });
     return [...map.values()].sort((a, b) => b.total - a.total).slice(0, 8);
-  }, [transactions]);
+  }, [filtered]);
 
-  const topCat = byCat[0];
-  const topPct = topCat ? Math.round((topCat.total / totalSpend) * 100) : 0;
 
   return (
     <div className="page">
-      <div className="page-kicker">Insights</div>
-      <h1 className="page-title">The <i>shape</i> of your money.</h1>
-      <div className="page-sub">{transactions.length} transactions. Here&rsquo;s what the ledger says.</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <div className="page-kicker">Insights</div>
+          <h1 className="page-title">The <i>shape</i> of your money.</h1>
+          <div className="page-sub">{filtered.length} transactions · {activeRange.label.toLowerCase()}.</div>
+        </div>
+        <div style={{ position: "relative", marginBottom: 8 }}>
+          <button
+            className="btn"
+            style={{ display: "flex", alignItems: "center", gap: 6 }}
+            onClick={() => setShowRangeMenu(v => !v)}
+          >
+            <Icon name="clock" size={13} /> {activeRange.label} <Icon name="chevronD" size={12} />
+          </button>
+          {showRangeMenu && (
+            <div style={{
+              position: "absolute", top: "100%", right: 0, marginTop: 4,
+              background: "var(--paper)", border: "1px solid var(--rule)",
+              borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+              zIndex: 50, minWidth: 160,
+            }}>
+              {_IN_RANGES.map((r) => (
+                <button key={r.id}
+                  onClick={() => { setRange(r.id); setShowRangeMenu(false); setExcludedCats(new Set()); }}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left",
+                    padding: "9px 14px", fontSize: 13, border: "none", cursor: "pointer",
+                    color: "var(--ink-1)",
+                    fontWeight: range === r.id ? 600 : 400,
+                    background: range === r.id ? "var(--surface)" : "transparent",
+                  }}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div style={{ height: 28 }} />
 
@@ -60,7 +156,7 @@ function InsightsPage({ transactions, privacy }) {
       <div className="grid-2">
         <div className="panel">
           <div className="panel-hd">
-            <h3>Cash flow · last 6 months</h3>
+            <h3>Cash flow · {activeRange.label.toLowerCase()}</h3>
             <div className="legend">
               <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>
               <span><span className="sw" style={{ background: "oklch(0.48 0.11 35)" }}></span>Out</span>
@@ -81,32 +177,57 @@ function InsightsPage({ transactions, privacy }) {
         <div className="panel">
           <div className="panel-hd">
             <h3>Category split</h3>
-            <div className="tools"><span>This period</span></div>
+            <div className="tools">
+              {excludedCats.size > 0 && (
+                <button className="btn ghost" style={{ fontSize: 11 }} onClick={() => setExcludedCats(new Set())}>
+                  Reset ({excludedCats.size} hidden)
+                </button>
+              )}
+              <span className="hint">Click to exclude</span>
+            </div>
           </div>
           <div className="panel-pad" style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 20, alignItems: "center" }}>
             <div style={{ filter: privacy ? "blur(8px)" : "none" }}>
               <Ring
                 segments={segments}
                 center={
-                  <div>
-                    <div style={{ fontFamily: "Instrument Serif, serif", fontSize: 28, lineHeight: 1 }}>
-                      {topPct}%
+                  segments.length > 0 ? (
+                    <div>
+                      <div style={{ fontFamily: "Instrument Serif, serif", fontSize: 28, lineHeight: 1 }}>
+                        {Math.round((segments[0]?.value / totalSpend) * 100)}%
+                      </div>
+                      <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-4)" }}>
+                        {segments[0]?.cat?.name}
+                      </div>
                     </div>
-                    <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-4)" }}>
-                      {topCat.cat?.name}
-                    </div>
-                  </div>
+                  ) : <div style={{ fontSize: 12, color: "var(--ink-4)" }}>All hidden</div>
                 }
               />
             </div>
             <div>
-              {segments.map((s, i) => (
-                <div key={s.id} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, padding: "6px 0", alignItems: "center", fontSize: 13 }}>
-                  <span style={{ width: 9, height: 9, background: s.color, borderRadius: 2 }}></span>
-                  <span>{s.cat?.name}</span>
-                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmtSGD(-s.value, privacy).replace("−","")}</span>
-                </div>
-              ))}
+              {allSegments.map((s) => {
+                const excluded = excludedCats.has(s.id);
+                return (
+                  <div key={s.id}
+                    onClick={() => toggleCat(s.id)}
+                    style={{
+                      display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10,
+                      padding: "6px 4px", alignItems: "center", fontSize: 13,
+                      cursor: "pointer", borderRadius: 4,
+                      opacity: excluded ? 0.35 : 1,
+                      transition: "opacity 0.15s",
+                    }}
+                  >
+                    <span style={{ width: 9, height: 9, background: excluded ? "var(--ink-4)" : s.color, borderRadius: 2, transition: "background 0.15s" }}></span>
+                    <span style={{ textDecoration: excluded ? "line-through" : "none", color: excluded ? "var(--ink-4)" : "var(--ink-1)" }}>
+                      {s.cat?.name}
+                    </span>
+                    <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                      {excluded ? "—" : fmtSGD(-s.value, privacy).replace("−","")}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -142,22 +263,23 @@ function InsightsPage({ transactions, privacy }) {
         <div className="panel">
           <div className="panel-hd">
             <h3>Recurring, watched</h3>
-            <div className="tools"><span className="hint">Auto-detected subscriptions</span></div>
+            <div className="tools"><span className="hint">Auto-detected · {recurring.length} found</span></div>
           </div>
           <div style={{ padding: "4px 0 8px" }}>
-            {[
-              { name: "Spotify Premium", amt: 10.98, next: "Apr 24", cat: "entertainment" },
-              { name: "Netflix Standard", amt: 19.98, next: "Apr 28", cat: "entertainment" },
-              { name: "Singtel Fibre Broadband", amt: 59.90, next: "May 01", cat: "utilities" },
-              { name: "StarHub Mobile", amt: 42.00, next: "May 03", cat: "utilities" },
-              { name: "Rent — Tiong Bahru", amt: 3200.00, next: "May 01", cat: "utilities" },
-            ].map((s) => (
+            {recurring.length === 0 && (
+              <div style={{ padding: "32px 20px", fontSize: 13, color: "var(--ink-4)", textAlign: "center" }}>
+                No recurring charges detected yet. Import more statements to see patterns.
+              </div>
+            )}
+            {recurring.map((s) => (
               <div key={s.name} style={{ display: "grid", gridTemplateColumns: "1fr auto auto", padding: "14px 20px", borderTop: "1px solid var(--rule)", alignItems: "center", gap: 18 }}>
                 <div>
                   <div style={{ fontSize: 13 }}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--ink-4)" }}>Next charge · {s.next}</div>
+                  <div style={{ fontSize: 11, color: "var(--ink-4)" }}>
+                    Next charge · {s.next.toLocaleDateString("en-GB", { month: "short", day: "numeric" })}
+                  </div>
                 </div>
-                <div className="chip" style={{ cursor: "default" }}>Monthly</div>
+                <div className="chip" style={{ cursor: "default" }}>{s.freq}</div>
                 <div className="mono tnum" style={{ fontSize: 13, color: "var(--debit)" }}>{fmtSGD(-s.amt, privacy)}</div>
               </div>
             ))}

@@ -134,29 +134,47 @@ function Sparkline({ data, height = 140, privacy = false }) {
 
 /* ========== Ring chart ========== */
 function Ring({ segments, size = 180, thickness = 22, center }) {
-  // segments: [{value, color, id}]
+  const [hovered, setHovered] = useState(null);
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   const r = size / 2 - thickness / 2;
   const c = 2 * Math.PI * r;
   let acc = 0;
+  const hovSeg = hovered != null ? segments[hovered] : null;
+  const hovPct = hovSeg ? Math.round((hovSeg.value / total) * 100) : null;
+  const displayCenter = hovSeg ? (
+    <div>
+      <div style={{ fontFamily: "Instrument Serif, serif", fontSize: 28, lineHeight: 1, color: hovSeg.color }}>
+        {hovPct}%
+      </div>
+      <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-4)", marginTop: 3 }}>
+        {hovSeg.cat?.name || hovSeg.id}
+      </div>
+    </div>
+  ) : center;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="oklch(0.92 0.01 80)" strokeWidth={thickness} />
       {segments.map((s, i) => {
         const frac = s.value / total;
         const dash = `${c * frac} ${c * (1 - frac)}`;
         const offset = c * (1 - acc);
         acc += frac;
+        const isHov = hovered === i;
         return (
-          <circle key={s.id} cx={size/2} cy={size/2} r={r} fill="none" stroke={s.color} strokeWidth={thickness}
+          <circle key={s.id} cx={size/2} cy={size/2} r={r} fill="none"
+            stroke={s.color} strokeWidth={isHov ? thickness + 4 : thickness}
             strokeDasharray={dash} strokeDashoffset={offset}
-            transform={`rotate(-90 ${size/2} ${size/2})`} strokeLinecap="butt" />
+            transform={`rotate(-90 ${size/2} ${size/2})`} strokeLinecap="butt"
+            style={{ cursor: "pointer", transition: "stroke-width 0.12s" }}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+          />
         );
       })}
-      {center && (
+      {displayCenter && (
         <foreignObject x={thickness} y={thickness} width={size - thickness*2} height={size - thickness*2}>
           <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", textAlign: "center" }}>
-            {center}
+            {displayCenter}
           </div>
         </foreignObject>
       )}
