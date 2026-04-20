@@ -1,12 +1,68 @@
 // Overview page
 const { useState: useStateOV, useMemo: useMemoOV } = React;
 
+const _OV_RANGES = [
+  { id: "month", label: "This month" },
+  { id: "30d",   label: "Last 30 days" },
+  { id: "90d",   label: "Last 90 days" },
+  { id: "all",   label: "All time" },
+];
+
+function filterByRange(txns, rangeId) {
+  const now = new Date();
+  if (rangeId === "month") {
+    return txns.filter((t) => {
+      const d = new Date(t.date);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+  }
+  if (rangeId === "30d" || rangeId === "90d") {
+    const days = rangeId === "30d" ? 30 : 90;
+    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - days);
+    return txns.filter((t) => new Date(t.date) >= cutoff);
+  }
+  return txns; // "all"
+}
+
 function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
+  const [catRange, setCatRange] = useStateOV("month");
+  const [showRangeMenu, setShowRangeMenu] = useStateOV(false);
+
+  const catTxns = useMemoOV(() => filterByRange(transactions, catRange), [transactions, catRange]);
   const recent = transactions.slice(0, 8);
   const totals = useMemoOV(() => totalsFor(transactions), [transactions]);
   const flow = useMemoOV(() => dailyFlow(transactions, 30), [transactions]);
-  const byCat = useMemoOV(() => spendByCategory(transactions).slice(0, 6), [transactions]);
+  const byCat = useMemoOV(() => spendByCategory(catTxns).slice(0, 6), [catTxns]);
   const topSpend = byCat[0]?.total || 1;
+  const activeRange = _OV_RANGES.find((r) => r.id === catRange);
+
+  const statsThisMonth = useMemoOV(() => {
+    const now = new Date();
+    const thisMonth = transactions.filter((t) => {
+      const d = new Date(t.date);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+    const biggest = thisMonth.filter(t => t.amount < 0).sort((a, b) => a.amount - b.amount)[0];
+    const merchantMap = new Map();
+    thisMonth.filter(t => t.amount < 0).forEach(t => {
+      if (!merchantMap.has(t.description)) merchantMap.set(t.description, { count: 0, total: 0 });
+      const m = merchantMap.get(t.description); m.count++; m.total += -t.amount;
+    });
+    const topM = [...merchantMap.entries()].sort((a, b) => b[1].total - a[1].total)[0];
+    const spendDays = Math.min(now.getDate(), new Date(now.getFullYear(), now.getMonth()+1, 0).getDate());
+    const totalSpend = thisMonth.filter(t => t.amount < 0).reduce((s, t) => s - t.amount, 0);
+    const avgDaily = spendDays > 0 ? totalSpend / spendDays : 0;
+    // Recurring: descriptions appearing in 2+ distinct months
+    const descMonths = new Map();
+    transactions.filter(t => t.amount < 0).forEach(t => {
+      const key = t.description.trim().toLowerCase();
+      if (!descMonths.has(key)) descMonths.set(key, new Set());
+      const d = new Date(t.date);
+      descMonths.get(key).add(`${d.getFullYear()}-${d.getMonth()}`);
+    });
+    const recurCount = [...descMonths.values()].filter(s => s.size >= 2).length;
+    return { biggest, topM, avgDaily, spendDays, recurCount };
+  }, [transactions]);
 
   const balance = totals.net;
   const absBalance = Math.abs(balance);
@@ -79,8 +135,37 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
         <div className="panel">
           <div className="panel-hd">
             <h3>Where it goes</h3>
-            <div className="tools">
-              <span>This month</span><Icon name="chevronD" size={12} />
+            <div className="tools" style={{ position: "relative" }}>
+              <button
+                className="btn ghost"
+                style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}
+                onClick={() => setShowRangeMenu((v) => !v)}
+              >
+                {activeRange.label} <Icon name="chevronD" size={12} />
+              </button>
+              {showRangeMenu && (
+                <div style={{
+                  position: "absolute", top: "100%", right: 0, marginTop: 4,
+                  background: "var(--paper)", border: "1px solid var(--rule)",
+                  borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                  zIndex: 50, minWidth: 140,
+                }}>
+                  {_OV_RANGES.map((r) => (
+                    <button key={r.id}
+                      onClick={() => { setCatRange(r.id); setShowRangeMenu(false); }}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left",
+                        padding: "8px 14px", fontSize: 13, background: "none",
+                        border: "none", cursor: "pointer", color: "var(--ink-1)",
+                        fontWeight: catRange === r.id ? 600 : 400,
+                        background: catRange === r.id ? "var(--surface)" : "transparent",
+                      }}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div className="panel-pad" style={{ paddingTop: 16 }}>
@@ -104,10 +189,27 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
       {/* Stat strip */}
       <div style={{ height: 20 }} />
       <div className="grid-4">
-        <StatBlock label="Largest expense" value={fmtSGD(-2380.00, privacy)} sub="Singapore Airlines · Apr 02" />
-        <StatBlock label="Subscriptions" value={fmtSGD(-89.88, privacy)} sub="4 recurring · next: Apr 24" />
-        <StatBlock label="Top merchant" value="Grab" sub="24 visits · S$412 this month" />
-        <StatBlock label="Avg daily spend" value={fmtSGD(-98.24, privacy)} sub="−12% vs last month" accent />
+        <StatBlock
+          label="Largest expense"
+          value={statsThisMonth.biggest ? fmtSGD(statsThisMonth.biggest.amount, privacy) : "—"}
+          sub={statsThisMonth.biggest ? `${statsThisMonth.biggest.description} · ${fmtDate(statsThisMonth.biggest.date)}` : "No expenses this month"}
+        />
+        <StatBlock
+          label="Subscriptions"
+          value={statsThisMonth.recurCount > 0 ? String(statsThisMonth.recurCount) : "—"}
+          sub={statsThisMonth.recurCount > 0 ? `${statsThisMonth.recurCount} recurring charges detected` : "None detected yet"}
+        />
+        <StatBlock
+          label="Top merchant"
+          value={statsThisMonth.topM ? statsThisMonth.topM[0] : "—"}
+          sub={statsThisMonth.topM ? `${statsThisMonth.topM[1].count}× · ${fmtSGD(-statsThisMonth.topM[1].total, privacy)}` : "No spend yet"}
+        />
+        <StatBlock
+          label="Avg daily spend"
+          value={statsThisMonth.avgDaily > 0 ? fmtSGD(-statsThisMonth.avgDaily, privacy) : "—"}
+          sub={`based on ${statsThisMonth.spendDays} days this month`}
+          accent
+        />
       </div>
 
       {/* Recent transactions */}
