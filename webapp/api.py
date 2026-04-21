@@ -167,6 +167,32 @@ async def get_transactions(
     return {"transactions": records, "total": len(records)}
 
 
+@app.post("/api/transactions")
+async def create_transaction(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    required = ("date", "description", "amount", "bank")
+    missing = [k for k in required if not body.get(k) and body.get(k) != 0]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing fields: {', '.join(missing)}")
+    try:
+        amount = float(body["amount"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Amount must be numeric") from exc
+    row = {
+        "date": str(body["date"]),
+        "description": str(body["description"]).strip(),
+        "amount": amount,
+        "bank": str(body["bank"]),
+        "category": str(body.get("category") or "Other"),
+    }
+    if not row["description"]:
+        raise HTTPException(status_code=400, detail="Description cannot be blank")
+    saved = save_transactions(pd.DataFrame([row]), user)
+    return {"saved": saved, "transaction": row}
+
+
 @app.delete("/api/transactions")
 async def remove_transactions(request: Request, user: str = Depends(_current_user)) -> dict:
     if not _MONGO:

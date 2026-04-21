@@ -1,7 +1,8 @@
 // Transactions page — full filterable ledger
 const { useState: useStateTX, useMemo: useMemoTX } = React;
 
-function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank, initialCategory, availableCategories = [] }) {
+function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank, initialCategory, availableCategories = [], onTxChanged }) {
+  const [addOpen, setAddOpen] = useStateTX(false);
   const [activeCats, setActiveCats] = useStateTX(initialCategory ? [initialCategory] : []);
   const [activeBanks, setActiveBanks] = useStateTX(initialBank ? [initialBank] : []);
   const [range, setRange] = useStateTX("all");
@@ -63,8 +64,8 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
           <button className="btn" onClick={() => apiExportCsv()}>
             <Icon name="download" size={14} /> Export CSV
           </button>
-          <button className="btn primary">
-            <Icon name="plus" size={14} /> Import statement
+          <button className="btn" onClick={() => setAddOpen(true)}>
+            <Icon name="plus" size={14} /> Add transaction
           </button>
         </div>
       </div>
@@ -165,7 +166,127 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
           );
         })}
       </div>
+
+      {addOpen && (
+        <AddTransactionModal
+          onClose={() => setAddOpen(false)}
+          availableCategories={availableCategories}
+          onSaved={onTxChanged}
+        />
+      )}
     </div>
+  );
+}
+
+function AddTransactionModal({ onClose, availableCategories = [], onSaved }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useStateTX(today);
+  const [description, setDescription] = useStateTX("");
+  const [amount, setAmount] = useStateTX("");
+  const [direction, setDirection] = useStateTX("out"); // out = expense, in = income
+  const [bank, setBank] = useStateTX("OCBC");
+  const [categoryName, setCategoryName] = useStateTX("Other");
+  const [busy, setBusy] = useStateTX(false);
+  const [err, setErr] = useStateTX("");
+
+  // Bank options: everything except the internal "other"
+  const bankOptions = BANKS.filter((b) => b.id !== "other");
+  const builtInCats = CATEGORIES.map((c) => ({ name: c.name, glyph: c.glyph }));
+  const customCats = (availableCategories || []).filter((c) => c && c.custom).map((c) => ({ name: c.name, glyph: c.glyph || "•" }));
+  const allCats = [...builtInCats, ...customCats];
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr("");
+    const amt = parseFloat(amount);
+    if (!description.trim()) { setErr("Description required"); return; }
+    if (isNaN(amt) || amt === 0) { setErr("Amount must be a non-zero number"); return; }
+    const signedAmount = direction === "out" ? -Math.abs(amt) : Math.abs(amt);
+    setBusy(true);
+    try {
+      await apiCreateTransaction({
+        date, description: description.trim(), amount: signedAmount,
+        bank, category: categoryName,
+      });
+      if (onSaved) await onSaved();
+      onClose();
+    } catch (e2) {
+      setErr(e2.message || "Failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inputStyle = {
+    width: "100%", padding: "8px 10px", border: "1px solid var(--rule)",
+    borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 13,
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200 }} />
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 201, width: 420, padding: "28px 32px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,0.18)", maxHeight: "90vh", overflow: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+          <div style={{ fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 20, color: "var(--ink-1)" }}>Add transaction</div>
+          <button className="icon-btn" onClick={onClose}><Icon name="close" size={14} /></button>
+        </div>
+
+        <form onSubmit={submit}>
+          <div style={{ marginBottom: 12 }}>
+            <div className="tag" style={{ marginBottom: 6 }}>Date</div>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div className="tag" style={{ marginBottom: 6 }}>Description</div>
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Coffee at Toby's" style={inputStyle} autoFocus />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+            <div>
+              <div className="tag" style={{ marginBottom: 6 }}>Direction</div>
+              <div className="seg" style={{ display: "flex" }}>
+                <button type="button" className={direction === "out" ? "on" : ""} onClick={() => setDirection("out")} style={{ flex: 1 }}>Expense</button>
+                <button type="button" className={direction === "in" ? "on" : ""} onClick={() => setDirection("in")} style={{ flex: 1 }}>Income</button>
+              </div>
+            </div>
+            <div>
+              <div className="tag" style={{ marginBottom: 6 }}>Amount (SGD)</div>
+              <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" style={inputStyle} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div>
+              <div className="tag" style={{ marginBottom: 6 }}>Bank</div>
+              <select value={bank} onChange={(e) => setBank(e.target.value)} style={inputStyle}>
+                {bankOptions.map((b) => (
+                  <option key={b.id} value={b.name}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div className="tag" style={{ marginBottom: 6 }}>Category</div>
+              <select value={categoryName} onChange={(e) => setCategoryName(e.target.value)} style={inputStyle}>
+                {allCats.map((c) => (
+                  <option key={c.name} value={c.name}>{c.glyph} {c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {err && (
+            <div style={{ marginBottom: 12, padding: "8px 10px", background: "var(--paper-2)", color: "var(--debit)", fontSize: 12, borderRadius: 4 }}>
+              {err}
+            </div>
+          )}
+
+          <button type="submit" disabled={busy} className="btn primary" style={{ width: "100%", padding: "11px" }}>
+            {busy ? "Saving…" : "Add transaction"}
+          </button>
+        </form>
+      </div>
+    </>
   );
 }
 

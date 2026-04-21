@@ -91,6 +91,18 @@ async function apiFetchTransactions({ start, end } = {}) {
   return (data.transactions || []).map(normalizeApiTransaction);
 }
 
+async function apiCreateTransaction({ date, description, amount, bank, category }) {
+  const res = await _fetch("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify({ date, description, amount, bank, category }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to add transaction");
+  }
+  return res.json();
+}
+
 async function apiDeleteTransactions(transactions) {
   const res = await _fetch("/api/transactions", {
     method: "DELETE",
@@ -284,7 +296,7 @@ window.getCatInfo = getCatInfo;
 Object.assign(window, {
   getToken, getEmail, clearSession, isLoggedIn,
   apiLogin, apiLogout, apiResetPassword, apiChangePassword,
-  apiFetchTransactions, apiDeleteTransactions, apiUpdateCategory,
+  apiFetchTransactions, apiCreateTransaction, apiDeleteTransactions, apiUpdateCategory,
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,
   apiExportCsv,
