@@ -98,23 +98,54 @@ async def me(user: str = Depends(_current_user)) -> dict:
     return {"email": user}
 
 
-@app.post("/api/auth/signup")
-async def signup(request: Request) -> dict:
+@app.get("/api/public-config")
+async def public_config() -> dict:
+    """Non-secret config the frontend needs at boot (e.g. OAuth client ID)."""
+    return {"google_client_id": os.getenv("GOOGLE_CLIENT_ID", "")}
+
+
+@app.post("/api/auth/google")
+async def google_auth(request: Request) -> dict:
+    """Verify a Google ID token (from GIS) and issue a Bankclaw auth token.
+
+    The frontend obtains the ID token via Google Identity Services and POSTs
+    it here. We verify the JWT against Google's certs, require email_verified,
+    and upsert a passwordless user record.
+    """
     body = await request.json()
-    from webapp.auth import hash_password, normalize_email  # noqa: PLC0415
-    email = normalize_email(str(body.get("email", "")))
-    password = str(body.get("password", ""))
+    credential = str(body.get("credential") or body.get("id_token") or "").strip()
+    if not credential:
+        raise HTTPException(status_code=400, detail="Missing Google credential")
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google login not configured")
+
+    try:
+        from google.auth.transport import requests as google_requests  # noqa: PLC0415
+        from google.oauth2 import id_token as google_id_token  # noqa: PLC0415
+
+        claims = google_id_token.verify_oauth2_token(
+            credential, google_requests.Request(), client_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=f"Invalid Google credential: {exc}") from exc
+
+    if not claims.get("email_verified"):
+        raise HTTPException(status_code=401, detail="Email not verified with Google")
+
+    email = str(claims.get("email", "")).strip().lower()
     if "@" not in email:
-        raise HTTPException(status_code=400, detail="Valid email required")
-    if len(password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+        raise HTTPException(status_code=401, detail="No email in Google credential")
+
+    # Upsert the user — passwordless account. Ignore failures so existing
+    # email/password accounts with the same address can still sign in via Google.
     try:
         from webapp.user_repository import create_user  # noqa: PLC0415
-        created = create_user(email, hash_password(password))
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=503, detail="User accounts unavailable") from exc
-    if not created:
-        raise HTTPException(status_code=409, detail="An account with this email already exists")
+        create_user(email, password_hash="__google__")
+    except Exception:  # noqa: BLE001
+        pass
+
     token = create_auth_token(email)
     return {"token": token, "email": email}
 

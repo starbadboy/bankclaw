@@ -53,19 +53,28 @@ async function apiLogin(email, password) {
 
 async function apiLogout() { clearSession(); }
 
-async function apiSignup(email, password) {
-  const res = await fetch("/api/auth/signup", {
+async function apiGoogleLogin(credential) {
+  const res = await fetch("/api/auth/google", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ credential }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Sign-up failed");
+    throw new Error(err.detail || "Google sign-in failed");
   }
   const data = await res.json();
   _saveSession(data.token, data.email);
   return data;
+}
+
+let _publicConfigPromise = null;
+function apiFetchPublicConfig() {
+  if (_publicConfigPromise) return _publicConfigPromise;
+  _publicConfigPromise = fetch("/api/public-config")
+    .then((r) => (r.ok ? r.json() : {}))
+    .catch(() => ({}));
+  return _publicConfigPromise;
 }
 
 async function apiResetPassword(email, newPassword) {
@@ -310,7 +319,7 @@ window.getCatInfo = getCatInfo;
 
 Object.assign(window, {
   getToken, getEmail, clearSession, isLoggedIn,
-  apiLogin, apiLogout, apiSignup, apiResetPassword, apiChangePassword,
+  apiLogin, apiLogout, apiGoogleLogin, apiFetchPublicConfig, apiResetPassword, apiChangePassword,
   apiFetchTransactions, apiCreateTransaction, apiDeleteTransactions, apiUpdateCategory,
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,

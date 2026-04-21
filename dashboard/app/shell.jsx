@@ -53,11 +53,61 @@ function _AuthSuccess({ msg }) {
 
 // ── Login page ─────────────────────────────────────────────────────────────
 
+// ── Google sign-in button ──────────────────────────────────────────────────
+// Renders Google's official button via GIS. Falls back to a disabled stub
+// if the client ID env var is unset (shows a hint for the operator).
+function GoogleSignInButton({ onLogin, onError, width = 280 }) {
+  const ref = React.useRef(null);
+  const [configured, setConfigured] = useStateApp(null); // null = loading
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cfg = await apiFetchPublicConfig();
+      if (cancelled) return;
+      if (!cfg.google_client_id) { setConfigured(false); return; }
+      const tryRender = () => {
+        if (!window.google?.accounts?.id || !ref.current) return false;
+        window.google.accounts.id.initialize({
+          client_id: cfg.google_client_id,
+          callback: async (resp) => {
+            try {
+              await apiGoogleLogin(resp.credential);
+              onLogin && onLogin();
+            } catch (e) {
+              onError && onError(e.message || "Google sign-in failed");
+            }
+          },
+        });
+        window.google.accounts.id.renderButton(ref.current, {
+          theme: "outline", size: "large", type: "standard",
+          text: "continue_with", shape: "rectangular", width,
+        });
+        setConfigured(true);
+        return true;
+      };
+      if (!tryRender()) {
+        const iv = setInterval(() => { if (tryRender()) clearInterval(iv); }, 200);
+        setTimeout(() => clearInterval(iv), 8000);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [width]);
+
+  if (configured === false) {
+    return (
+      <div style={{ fontSize: 11, color: "var(--ink-4)", textAlign: "center", padding: "10px 0" }}>
+        Google sign-in not configured — set <code>GOOGLE_CLIENT_ID</code> env var.
+      </div>
+    );
+  }
+  return <div ref={ref} style={{ display: "flex", justifyContent: "center" }} />;
+}
+
 function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
-  const [mode, setMode] = useStateApp(initialMode); // login | reset | signup
+  const [mode, setMode] = useStateApp(initialMode === "signup" ? "login" : initialMode); // login | reset
   const [email, setEmail] = useStateApp("");
   const [password, setPassword] = useStateApp("");
-  const [confirmPassword, setConfirmPassword] = useStateApp("");
   const [newPassword, setNewPassword] = useStateApp("");
   const [error, setError] = useStateApp("");
   const [success, setSuccess] = useStateApp("");
@@ -74,22 +124,6 @@ function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
       onLogin();
     } catch (err) {
       setError(err.message || "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const submitSignup = async (e) => {
-    e.preventDefault();
-    setError(""); setSuccess("");
-    if (password !== confirmPassword) { setError("Passwords don't match"); return; }
-    if (password.length < 8) { setError("Password must be at least 8 characters"); return; }
-    setLoading(true);
-    try {
-      await apiSignup(email, password);
-      onLogin();
-    } catch (err) {
-      setError(err.message || "Sign-up failed");
     } finally {
       setLoading(false);
     }
@@ -120,46 +154,35 @@ function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
             Bankclaw
           </div>
           <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 6 }}>
-            {mode === "login" ? "Private Ledger" : mode === "signup" ? "Create account" : "Reset Password"}
+            {mode === "login" ? "Private Ledger" : "Reset Password"}
           </div>
         </div>
 
         {mode === "login" && (
-          <form onSubmit={submitLogin}>
-            <_FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-            <_FormField label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
-            <_AuthError msg={error} />
-            <_AuthSuccess msg={success} />
-            <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
-              {loading ? "Signing in…" : "Sign in"}
-            </button>
-            <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-              <button type="button" onClick={() => switchMode("signup")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 500 }}>
-                Create account
-              </button>
-              <button type="button" onClick={() => switchMode("reset")} style={{ background: "none", border: "none", color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
-                Forgot password?
-              </button>
+          <>
+            <div style={{ marginBottom: 18 }}>
+              <GoogleSignInButton onLogin={onLogin} onError={setError} width={280} />
             </div>
-          </form>
-        )}
-
-        {mode === "signup" && (
-          <form onSubmit={submitSignup}>
-            <_FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
-            <_FormField label="Password" type="password" value={password} onChange={setPassword} placeholder="Min. 8 characters" />
-            <_FormField label="Confirm Password" type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="••••••••" />
-            <_AuthError msg={error} />
-            <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
-              {loading ? "Creating…" : "Create account"}
-            </button>
-            <div style={{ marginTop: 16, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>
-              Already have an account?{" "}
-              <button type="button" onClick={() => switchMode("login")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 500 }}>
-                Sign in
-              </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <div style={{ flex: 1, height: 1, background: "var(--rule)" }} />
+              <div style={{ fontSize: 10, letterSpacing: "0.2em", color: "var(--ink-4)", textTransform: "uppercase" }}>or email</div>
+              <div style={{ flex: 1, height: 1, background: "var(--rule)" }} />
             </div>
-          </form>
+            <form onSubmit={submitLogin}>
+              <_FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+              <_FormField label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+              <_AuthError msg={error} />
+              <_AuthSuccess msg={success} />
+              <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+                {loading ? "Signing in…" : "Sign in"}
+              </button>
+              <div style={{ marginTop: 16, textAlign: "center" }}>
+                <button type="button" onClick={() => switchMode("reset")} style={{ background: "none", border: "none", fontSize: 12, color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
+                  Forgot password?
+                </button>
+              </div>
+            </form>
+          </>
         )}
 
         {mode === "reset" && (
@@ -237,7 +260,8 @@ function _buildMockRingSegments() {
   ];
 }
 
-function LandingPage({ onSignIn, onSignUp }) {
+function LandingPage({ onSignIn, onLogin }) {
+  const [googleErr, setGoogleErr] = useStateApp("");
   const navStyle = {
     display: "flex", justifyContent: "space-between", alignItems: "center",
     padding: "20px 48px", borderBottom: "1px solid var(--rule)",
@@ -253,7 +277,6 @@ function LandingPage({ onSignIn, onSignUp }) {
         <div style={brand}>Bankclaw</div>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn" onClick={onSignIn}>Sign in</button>
-          <button className="btn primary" onClick={onSignUp}>Create account</button>
         </div>
       </div>
 
@@ -270,12 +293,11 @@ function LandingPage({ onSignIn, onSignUp }) {
           recurring-charge detection, and editorial-grade spending insights.
           Supports 18 banks across Asia and North America.
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
-          <button className="btn primary" onClick={onSignUp} style={{ padding: "12px 22px", fontSize: 14 }}>
-            Create free account →
-          </button>
-          <button className="btn" onClick={onSignIn} style={{ padding: "12px 22px", fontSize: 14 }}>
-            I already have one
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <GoogleSignInButton onLogin={onLogin} onError={setGoogleErr} width={300} />
+          {googleErr && <div style={{ fontSize: 12, color: "var(--debit)" }}>{googleErr}</div>}
+          <button className="btn" onClick={onSignIn} style={{ padding: "10px 20px", fontSize: 13 }}>
+            Sign in with email
           </button>
         </div>
 
@@ -446,9 +468,9 @@ function LandingPage({ onSignIn, onSignUp }) {
         <div style={{ fontSize: 16, color: "var(--ink-3)", marginBottom: 30 }}>
           Free to use. Your data stays with you.
         </div>
-        <button className="btn primary" onClick={onSignUp} style={{ padding: "14px 28px", fontSize: 15 }}>
-          Create free account →
-        </button>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <GoogleSignInButton onLogin={onLogin} onError={setGoogleErr} width={300} />
+        </div>
       </div>
 
       {/* Footer */}
@@ -918,14 +940,13 @@ function App() {
       return (
         <LandingPage
           onSignIn={() => setAuthView("login")}
-          onSignUp={() => setAuthView("signup")}
+          onLogin={() => { setAuthed(true); setAuthView("landing"); }}
         />
       );
     }
     return (
       <LoginPage
         onLogin={() => { setAuthed(true); setAuthView("landing"); }}
-        initialMode={authView === "signup" ? "signup" : "login"}
         onBackHome={() => setAuthView("landing")}
       />
     );
