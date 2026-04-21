@@ -28,7 +28,7 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
       if (query && !t.description.toLowerCase().includes(query.toLowerCase())
         && !t.reference.toLowerCase().includes(query.toLowerCase())) return false;
       return true;
-    });
+    }).sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [transactions, activeCats, activeBanks, range, dir, query]);
 
   const totals = useMemoTX(() => totalsFor(filtered), [filtered]);

@@ -285,6 +285,24 @@ def get_transactions_by_date_range(start_date: str, end_date: str, user_email: s
     return pd.DataFrame(records)
 
 
+def update_transaction_category(
+    *, user_email: str, date: str, description: str, amount: float, bank: str, category: str
+) -> int:
+    db = get_db()
+    collection = db[_COLLECTION]
+    result = collection.update_one(
+        {
+            "user_email": user_email,
+            "date": str(date),
+            "description": str(description),
+            "amount": float(amount),
+            "bank": str(bank),
+        },
+        {"$set": {"category": str(category)}},
+    )
+    return result.modified_count
+
+
 def delete_transactions(df: pd.DataFrame, user_email: str) -> int:
     db = get_db()
     collection = db[_COLLECTION]

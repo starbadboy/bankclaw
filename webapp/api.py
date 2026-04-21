@@ -32,6 +32,7 @@ try:
         save_category_memory,
         save_custom_category,
         save_transactions,
+        update_transaction_category,
     )
     _MONGO = True
 except Exception:  # noqa: BLE001
@@ -174,6 +175,27 @@ async def remove_transactions(request: Request, user: str = Depends(_current_use
     if df.empty:
         return {"deleted": 0}
     return {"deleted": delete_transactions(df, user)}
+
+
+@app.patch("/api/transactions/category")
+async def patch_transaction_category(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    tx = body.get("transaction") or {}
+    category = body.get("category")
+    required = ("date", "description", "amount", "bank")
+    if not category or not all(k in tx for k in required):
+        raise HTTPException(status_code=400, detail="transaction (date, description, amount, bank) and category required")
+    modified = update_transaction_category(
+        user_email=user,
+        date=tx["date"],
+        description=tx["description"],
+        amount=float(tx["amount"]),
+        bank=tx["bank"],
+        category=category,
+    )
+    return {"modified": modified}
 
 
 # ---------------------------------------------------------------------------

@@ -100,6 +100,34 @@ async function apiDeleteTransactions(transactions) {
   return res.json();
 }
 
+// Maps frontend CATEGORIES id → API category string (inverse of _CAT_MAP)
+const _CAT_ID_TO_NAME = {
+  food: "Food & Dining", transport: "Transport", shopping: "Shopping",
+  entertainment: "Entertainment", utilities: "Utilities", healthcare: "Healthcare",
+  travel: "Travel", income: "Income", transfer: "Transfer", other: "Other",
+};
+
+async function apiUpdateCategory(tx, newCategoryId) {
+  const raw = tx._raw || {};
+  const apiCategory = _CAT_ID_TO_NAME[newCategoryId] || "Other";
+  const payload = {
+    transaction: {
+      date: raw.date, description: raw.description,
+      amount: raw.amount, bank: raw.bank,
+    },
+    category: apiCategory,
+  };
+  const res = await _fetch("/api/transactions/category", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Update failed");
+  }
+  return res.json();
+}
+
 // ── Import ────────────────────────────────────────────────────────────────
 
 async function apiImport(files, { password = null, categorize = true } = {}) {
@@ -217,7 +245,7 @@ function normalizeApiTransaction(t) {
 Object.assign(window, {
   getToken, getEmail, clearSession, isLoggedIn,
   apiLogin, apiLogout, apiResetPassword, apiChangePassword,
-  apiFetchTransactions, apiDeleteTransactions,
+  apiFetchTransactions, apiDeleteTransactions, apiUpdateCategory,
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory,
   apiExportCsv,

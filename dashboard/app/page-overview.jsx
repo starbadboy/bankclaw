@@ -2,10 +2,11 @@
 const { useState: useStateOV, useMemo: useMemoOV } = React;
 
 const _OV_RANGES = [
-  { id: "month", label: "This month" },
-  { id: "30d",   label: "Last 30 days" },
-  { id: "90d",   label: "Last 90 days" },
-  { id: "all",   label: "All time" },
+  { id: "last_month", label: "Last month" },
+  { id: "month",      label: "This month" },
+  { id: "30d",        label: "Last 30 days" },
+  { id: "90d",        label: "Last 90 days" },
+  { id: "all",        label: "All time" },
 ];
 
 function filterByRange(txns, rangeId) {
@@ -14,6 +15,13 @@ function filterByRange(txns, rangeId) {
     return txns.filter((t) => {
       const d = new Date(t.date);
       return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+  }
+  if (rangeId === "last_month") {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return txns.filter((t) => {
+      const d = new Date(t.date);
+      return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
     });
   }
   if (rangeId === "30d" || rangeId === "90d") {
@@ -25,7 +33,7 @@ function filterByRange(txns, rangeId) {
 }
 
 function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
-  const [catRange, setCatRange] = useStateOV("month");
+  const [catRange, setCatRange] = useStateOV("last_month");
   const [showRangeMenu, setShowRangeMenu] = useStateOV(false);
 
   const catTxns = useMemoOV(() => filterByRange(transactions, catRange), [transactions, catRange]);

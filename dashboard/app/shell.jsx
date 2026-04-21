@@ -301,10 +301,47 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
   );
 }
 
-function Drawer({ tx, onClose, privacy }) {
+function Drawer({ tx, onClose, privacy, onChanged }) {
+  const { useState: useStateD } = React;
+  const [picking, setPicking] = useStateD(false);
+  const [busy, setBusy] = useStateD(false);
+  const [err, setErr] = useStateD("");
   const open = !!tx;
   const cat = tx && CATEGORIES.find((c) => c.id === tx.category);
   const bank = tx && BANKS.find((b) => b.id === tx.bank);
+
+  const handleRecategorise = async (newCatId) => {
+    if (!tx || newCatId === tx.category) { setPicking(false); return; }
+    setBusy(true); setErr("");
+    try {
+      await apiUpdateCategory(tx, newCatId);
+      setPicking(false);
+      if (onChanged) await onChanged();
+      onClose();
+    } catch (e) {
+      setErr(e.message || "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!tx || !window.confirm("Delete this transaction? This cannot be undone.")) return;
+    setBusy(true); setErr("");
+    try {
+      const raw = tx._raw || {};
+      await apiDeleteTransactions([{
+        date: raw.date, description: raw.description,
+        amount: raw.amount, bank: raw.bank,
+      }]);
+      if (onChanged) await onChanged();
+      onClose();
+    } catch (e) {
+      setErr(e.message || "Delete failed");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <>
       <div className={"drawer-backdrop" + (open ? " open" : "")} onClick={onClose}></div>
@@ -358,10 +395,42 @@ function Drawer({ tx, onClose, privacy }) {
                 </div>
               </div>
 
+              {picking && (
+                <div style={{ padding: "14px 0", borderBottom: "1px solid var(--rule)" }}>
+                  <div className="tag" style={{ marginBottom: 10 }}>Choose new category</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {CATEGORIES.map((c) => (
+                      <button
+                        key={c.id}
+                        className="chip"
+                        disabled={busy}
+                        onClick={() => handleRecategorise(c.id)}
+                        style={{
+                          cursor: busy ? "not-allowed" : "pointer",
+                          opacity: busy ? 0.5 : 1,
+                          background: c.id === tx.category ? "var(--paper-2)" : "transparent",
+                        }}
+                      >
+                        {c.glyph} {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {err && (
+                <div style={{ padding: "10px 12px", marginTop: 12, background: "var(--paper-2)", color: "var(--debit)", fontSize: 12, borderRadius: 4 }}>
+                  {err}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
-                <button className="btn">Recategorise</button>
-                <button className="btn">Split</button>
-                <button className="btn ghost" style={{ marginLeft: "auto", color: "var(--debit)" }}>Delete</button>
+                <button className="btn" disabled={busy} onClick={() => setPicking((p) => !p)}>
+                  {picking ? "Cancel" : "Recategorise"}
+                </button>
+                <button className="btn ghost" disabled={busy} onClick={handleDelete} style={{ marginLeft: "auto", color: "var(--debit)" }}>
+                  Delete
+                </button>
               </div>
             </>
           )}
@@ -523,7 +592,7 @@ function App() {
         {page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
       </main>
 
-      <Drawer tx={openTx} onClose={() => setOpenTx(null)} privacy={tweaks.privacy} />
+      <Drawer tx={openTx} onClose={() => setOpenTx(null)} privacy={tweaks.privacy} onChanged={loadTransactions} />
 
       {editMode && (
         <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)}
@@ -545,7 +614,8 @@ function App() {
 // Transactions grouped by bank × month — shows the "statement view"
 
 function HistoryPage({ transactions, privacy, onOpenTx }) {
-  const { useMemo: useMemoH } = React;
+  const { useMemo: useMemoH, useState: useStateH } = React;
+  const [expanded, setExpanded] = useStateH({});
 
   const statements = useMemoH(() => {
     const map = new Map();
@@ -557,8 +627,14 @@ function HistoryPage({ transactions, privacy, onOpenTx }) {
       s.txs.push(t);
       if (t.amount > 0) s.income += t.amount; else s.spend += -t.amount;
     });
+    // sort transactions within each statement desc by date
+    for (const s of map.values()) {
+      s.txs.sort((a, b) => new Date(b.date) - new Date(a.date));
+    }
     return [...map.values()].sort((a, b) => b.month.localeCompare(a.month) || a.bank.localeCompare(b.bank));
   }, [transactions]);
+
+  const toggle = (key) => setExpanded((e) => ({ ...e, [key]: !e[key] }));
 
   return (
     <div className="page">
@@ -577,8 +653,12 @@ function HistoryPage({ transactions, privacy, onOpenTx }) {
       {statements.map((s) => {
         const bank = BANKS.find((b) => b.id === s.bank);
         const monthLabel = new Date(s.month + "-01").toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+        const key = `${s.bank}-${s.month}`;
+        const isOpen = !!expanded[key];
+        const visibleTxs = isOpen ? s.txs : s.txs.slice(0, 5);
+        const hiddenCount = s.txs.length - 5;
         return (
-          <div key={`${s.bank}-${s.month}`} className="panel" style={{ marginBottom: 16 }}>
+          <div key={key} className="panel" style={{ marginBottom: 16 }}>
             <div className="panel-hd">
               <h3 style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ width: 10, height: 10, borderRadius: 2, background: bank?.color, display: "inline-block" }}></span>
@@ -591,7 +671,7 @@ function HistoryPage({ transactions, privacy, onOpenTx }) {
               </div>
             </div>
             <div className="ledger">
-              {s.txs.slice(0, 5).map((t) => {
+              {visibleTxs.map((t) => {
                 const cat = CATEGORIES.find((c) => c.id === t.category);
                 return (
                   <div key={t.id} className="row" onClick={() => onOpenTx(t)}>
@@ -604,10 +684,18 @@ function HistoryPage({ transactions, privacy, onOpenTx }) {
                   </div>
                 );
               })}
-              {s.txs.length > 5 && (
-                <div style={{ padding: "10px 20px", fontSize: 12, color: "var(--ink-4)", borderTop: "1px solid var(--rule)" }}>
-                  +{s.txs.length - 5} more transactions in this statement
-                </div>
+              {hiddenCount > 0 && (
+                <button
+                  onClick={() => toggle(key)}
+                  style={{
+                    width: "100%", padding: "12px 20px", fontSize: 12,
+                    color: "var(--accent)", borderTop: "1px solid var(--rule)",
+                    background: "transparent", border: "none", borderTop: "1px solid var(--rule)",
+                    cursor: "pointer", textAlign: "center", fontWeight: 500,
+                  }}
+                >
+                  {isOpen ? "Show less" : `Show all ${s.txs.length} transactions`}
+                </button>
               )}
             </div>
           </div>
