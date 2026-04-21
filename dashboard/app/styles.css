@@ -11,6 +11,7 @@
   --ink-4: oklch(0.7 0.008 60);
   --rule: oklch(0.88 0.008 80);
   --rule-2: oklch(0.8 0.01 80);
+  --surface: oklch(0.99 0.004 82);          /* solid card / modal surface */
   --accent: oklch(0.42 0.14 35);           /* burnished copper */
   --accent-2: oklch(0.55 0.14 35);
   --gold: oklch(0.72 0.12 85);
@@ -37,6 +38,7 @@
   --ink-4: oklch(0.44 0.008 82);
   --rule: oklch(0.3 0.01 60);
   --rule-2: oklch(0.38 0.012 60);
+  --surface: oklch(0.22 0.014 60);
   --accent: oklch(0.72 0.12 85);
   --accent-2: oklch(0.82 0.12 85);
   --shadow-card: 0 1px 0 oklch(0.3 0.01 60), 0 30px 60px -40px oklch(0 0 0 / 0.6);
