@@ -260,8 +260,7 @@ function _buildMockRingSegments() {
   ];
 }
 
-function LandingPage({ onSignIn, onLogin }) {
-  const [googleErr, setGoogleErr] = useStateApp("");
+function LandingPage({ onSignIn }) {
   const navStyle = {
     display: "flex", justifyContent: "space-between", alignItems: "center",
     padding: "20px 48px", borderBottom: "1px solid var(--rule)",
@@ -293,11 +292,9 @@ function LandingPage({ onSignIn, onLogin }) {
           recurring-charge detection, and editorial-grade spending insights.
           Supports 18 banks across Asia and North America.
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-          <GoogleSignInButton onLogin={onLogin} onError={setGoogleErr} width={300} />
-          {googleErr && <div style={{ fontSize: 12, color: "var(--debit)" }}>{googleErr}</div>}
-          <button className="btn" onClick={onSignIn} style={{ padding: "10px 20px", fontSize: 13 }}>
-            Sign in with email
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <button className="btn primary" onClick={onSignIn} style={{ padding: "12px 24px", fontSize: 14 }}>
+            Sign in to get started →
           </button>
         </div>
 
@@ -469,7 +466,9 @@ function LandingPage({ onSignIn, onLogin }) {
           Free to use. Your data stays with you.
         </div>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <GoogleSignInButton onLogin={onLogin} onError={setGoogleErr} width={300} />
+          <button className="btn primary" onClick={onSignIn} style={{ padding: "14px 28px", fontSize: 15 }}>
+            Sign in →
+          </button>
         </div>
       </div>
 
@@ -938,10 +937,7 @@ function App() {
   if (!authed) {
     if (authView === "landing") {
       return (
-        <LandingPage
-          onSignIn={() => setAuthView("login")}
-          onLogin={() => { setAuthed(true); setAuthView("landing"); }}
-        />
+        <LandingPage onSignIn={() => setAuthView("login")} />
       );
     }
     return (
