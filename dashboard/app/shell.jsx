@@ -293,7 +293,6 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
       <button className="icon-btn" title={privacy ? "Reveal amounts" : "Hide amounts"} onClick={() => setPrivacy(!privacy)}>
         <Icon name={privacy ? "eyeOff" : "eye"} size={15} />
       </button>
-      <button className="icon-btn" title="Notifications"><Icon name="bell" size={15} /></button>
       <button className="btn primary" onClick={() => onNav("import")}>
         <Icon name="plus" size={12} stroke={2.2} /> Import
       </button>
