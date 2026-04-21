@@ -61,9 +61,13 @@ function CategoryChip({ catId, active, onClick }) {
   );
 }
 
-function StatBlock({ label, value, sub, accent = false, mono = true }) {
+function StatBlock({ label, value, sub, accent = false, mono = true, onClick }) {
   return (
-    <div className={"stat" + (accent ? " accent" : "")}>
+    <div
+      className={"stat" + (accent ? " accent" : "") + (onClick ? " clickable" : "")}
+      onClick={onClick}
+      style={onClick ? { cursor: "pointer" } : undefined}
+    >
       <div className="lab">{label}</div>
       <div className={"val" + (mono ? " tnum" : "")}>{value}</div>
       {sub && <div className="sub">{sub}</div>}

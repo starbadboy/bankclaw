@@ -208,7 +208,8 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
         <StatBlock
           label="Subscriptions"
           value={statsThisMonth.recurCount > 0 ? String(statsThisMonth.recurCount) : "—"}
-          sub={statsThisMonth.recurCount > 0 ? `${statsThisMonth.recurCount} recurring charges detected` : "None detected yet"}
+          sub={statsThisMonth.recurCount > 0 ? "View recurring charges →" : "None detected yet"}
+          onClick={statsThisMonth.recurCount > 0 ? () => onNav("insights") : undefined}
         />
         <StatBlock
           label="Top merchant"
