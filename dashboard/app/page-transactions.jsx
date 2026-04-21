@@ -1,7 +1,7 @@
 // Transactions page — full filterable ledger
 const { useState: useStateTX, useMemo: useMemoTX } = React;
 
-function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank, initialCategory }) {
+function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank, initialCategory, availableCategories = [] }) {
   const [activeCats, setActiveCats] = useStateTX(initialCategory ? [initialCategory] : []);
   const [activeBanks, setActiveBanks] = useStateTX(initialBank ? [initialBank] : []);
   const [range, setRange] = useStateTX("all");
@@ -32,6 +32,11 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
   }, [transactions, activeCats, activeBanks, range, dir, query]);
 
   const totals = useMemoTX(() => totalsFor(filtered), [filtered]);
+
+  const connectedBankIds = useMemoTX(
+    () => new Set(transactions.map((t) => t.bank)),
+    [transactions],
+  );
 
   // Group by date divider
   const groups = useMemoTX(() => {
@@ -92,14 +97,22 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
           <CategoryChip key={c.id} catId={c.id} active={activeCats.includes(c.id)}
             onClick={() => toggle(activeCats, c.id, setActiveCats)} />
         ))}
+        {(availableCategories || [])
+          .filter((c) => c && c.custom)
+          .map((c) => (
+            <CategoryChip key={`custom-${c.name}`} catId={c.name} active={activeCats.includes(c.name)}
+              onClick={() => toggle(activeCats, c.name, setActiveCats)} />
+          ))}
         <span style={{ width: 1, alignSelf: "stretch", background: "var(--rule)" }}></span>
-        {BANKS.map((b) => (
-          <span key={b.id}
-            className={"chip" + (activeBanks.includes(b.id) ? " active" : "")}
-            onClick={() => toggle(activeBanks, b.id, setActiveBanks)}>
-            <span className="sw" style={{ background: b.color }}></span>{b.short}
-          </span>
-        ))}
+        {BANKS
+          .filter((b) => connectedBankIds.has(b.id))
+          .map((b) => (
+            <span key={b.id}
+              className={"chip" + (activeBanks.includes(b.id) ? " active" : "")}
+              onClick={() => toggle(activeBanks, b.id, setActiveBanks)}>
+              <span className="sw" style={{ background: b.color }}></span>{b.short}
+            </span>
+          ))}
         {(activeCats.length || activeBanks.length || dir !== "all") ? (
           <button className="btn ghost" style={{ fontSize: 12 }}
             onClick={() => { setActiveCats([]); setActiveBanks([]); setDir("all"); }}>
