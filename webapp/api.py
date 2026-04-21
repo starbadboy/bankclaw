@@ -318,6 +318,14 @@ async def export_csv(
 
 
 # ---------------------------------------------------------------------------
+# Health check (for Railway / Render / Fly probes)
+# ---------------------------------------------------------------------------
+@app.get("/api/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok", "mongo": "enabled" if _MONGO else "disabled"}
+
+
+# ---------------------------------------------------------------------------
 # SPA static file serving (must be last)
 # ---------------------------------------------------------------------------
 _DASHBOARD = Path(__file__).parent.parent / "dashboard"

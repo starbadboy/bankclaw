@@ -1,32 +1,40 @@
 FROM python:3.12-slim AS base
 
-# Install system dependencies for pdftotext
+# System dependencies for PDF parsing (pdftotext) and OCR
 RUN apt-get update && \
-    apt-get -y install build-essential libpoppler-cpp-dev pkg-config ocrmypdf \
-    # uv build dependencies
-    curl git
+    apt-get -y install --no-install-recommends \
+        build-essential \
+        libpoppler-cpp-dev \
+        pkg-config \
+        ocrmypdf \
+        poppler-utils \
+        tesseract-ocr \
+        curl \
+        git && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv (official binary)
-# Download the latest installer
 ADD https://astral.sh/uv/0.7.8/install.sh /uv-installer.sh
-
-# Run the installer then remove it
 RUN sh /uv-installer.sh && rm /uv-installer.sh
 
-# Ensure the installed binary is on the `PATH`
-ENV PATH="/root/.local/bin/:$PATH"
-
-ENV UV_CACHE_DIR=/tmp/uv-cache \
+ENV PATH="/root/.local/bin/:/root/.cargo/bin:$PATH" \
+    UV_CACHE_DIR=/tmp/uv-cache \
     PYTHONUNBUFFERED=1 \
-    PATH="/root/.cargo/bin:$PATH"
+    PORT=8501
 
 WORKDIR /app
 
-COPY pyproject.toml README.md entrypoint.py ./
-COPY webapp/ ./webapp
-
-# Install Python dependencies
+# Dependency install — copy manifests first for better layer caching
+COPY pyproject.toml uv.lock README.md ./
 RUN --mount=type=cache,target=$UV_CACHE_DIR \
-uv venv && uv sync --all-extras --group build
+    uv venv && uv sync --all-extras --frozen --no-install-project
 
-CMD ["uv", "run", "entrypoint.py"]
+# Application code
+COPY webapp/ ./webapp
+COPY dashboard/ ./dashboard
+COPY entrypoint.py ./
+
+# Railway/Render/etc inject $PORT at runtime; default to 8501 locally
+EXPOSE 8501
+
+CMD ["sh", "-c", "uv run uvicorn webapp.api:app --host 0.0.0.0 --port ${PORT:-8501} --proxy-headers --forwarded-allow-ips='*'"]
