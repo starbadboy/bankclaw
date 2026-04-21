@@ -29,6 +29,7 @@ try:
         archive_custom_category,
         delete_transactions,
         get_transactions_by_date_range,
+        rename_custom_category,
         save_category_memory,
         save_custom_category,
         save_transactions,
@@ -223,6 +224,23 @@ async def remove_category(name: str, user: str = Depends(_current_user)) -> dict
         raise HTTPException(status_code=503, detail="Database not available")
     archive_custom_category(name, user)
     return {"status": "ok"}
+
+
+@app.patch("/api/categories/{name}")
+async def rename_category(name: str, request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    new_name = body.get("name")
+    new_glyph = body.get("glyph")
+    if not new_name and not new_glyph:
+        raise HTTPException(status_code=400, detail="Provide name or glyph to update")
+    try:
+        return rename_custom_category(
+            user_email=user, old_name=name, new_name=new_name, new_glyph=new_glyph,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------

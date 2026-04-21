@@ -288,6 +288,71 @@ def get_transactions_by_date_range(start_date: str, end_date: str, user_email: s
     return pd.DataFrame(records)
 
 
+def rename_custom_category(
+    *, user_email: str, old_name: str, new_name: str | None = None, new_glyph: str | None = None
+) -> dict:
+    """Rename and/or re-glyph a custom category. Also re-tags matching transactions
+    and category_memory rows so the rest of the app picks up the new name."""
+    if not isinstance(old_name, str) or not old_name.strip():
+        raise ValueError("Old category name required")
+
+    old_clean = " ".join(old_name.split())
+    old_norm = _normalize_category_name(old_clean)
+
+    do_rename = bool(new_name) and _normalize_category_name(" ".join((new_name or "").split())) != old_norm
+    new_clean = " ".join((new_name or "").split()) if do_rename else old_clean
+    new_norm = _normalize_category_name(new_clean) if do_rename else old_norm
+
+    if do_rename and not new_clean:
+        raise ValueError("New category name cannot be blank")
+
+    cleaned_glyph = (new_glyph or "").strip() or None
+    now = datetime.now(tz=timezone.utc).isoformat()
+
+    db = get_db()
+    custom = db[_CUSTOM_CATEGORY_COLLECTION]
+
+    if do_rename:
+        # reject rename into a name that already exists (active or not)
+        clash = custom.find_one({"user_email": user_email, "normalized_name": new_norm, "is_active": True})
+        if clash:
+            raise ValueError("A category with that name already exists")
+
+    set_doc: dict = {"updated_at": now}
+    if do_rename:
+        set_doc["name"] = new_clean
+        set_doc["normalized_name"] = new_norm
+    if cleaned_glyph is not None:
+        set_doc["glyph"] = cleaned_glyph
+
+    result = custom.update_one(
+        {"user_email": user_email, "normalized_name": old_norm},
+        {"$set": set_doc},
+    )
+
+    tx_modified = 0
+    mem_modified = 0
+    if do_rename and result.matched_count:
+        tx_res = db[_COLLECTION].update_many(
+            {"user_email": user_email, "category": old_clean},
+            {"$set": {"category": new_clean}},
+        )
+        tx_modified = tx_res.modified_count
+        mem_res = db[_CATEGORY_MEMORY_COLLECTION].update_many(
+            {"user_email": user_email, "category": old_clean},
+            {"$set": {"category": new_clean}},
+        )
+        mem_modified = mem_res.modified_count
+
+    return {
+        "matched": result.matched_count,
+        "modified": result.modified_count,
+        "transactions_retagged": tx_modified,
+        "memory_retagged": mem_modified,
+        "name": new_clean,
+    }
+
+
 def update_transaction_category(
     *, user_email: str, date: str, description: str, amount: float, bank: str, category: str
 ) -> int:

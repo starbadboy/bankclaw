@@ -181,6 +181,18 @@ async function apiDeleteCategory(name) {
   return res.json();
 }
 
+async function apiRenameCategory(oldName, { name, glyph } = {}) {
+  const body = {};
+  if (name) body.name = name;
+  if (glyph) body.glyph = glyph;
+  const res = await _fetch(`/api/categories/${encodeURIComponent(oldName)}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
+  return res.json();
+}
+
 // ── Export ────────────────────────────────────────────────────────────────
 
 async function apiExportCsv({ start, end } = {}) {
@@ -274,7 +286,7 @@ Object.assign(window, {
   apiLogin, apiLogout, apiResetPassword, apiChangePassword,
   apiFetchTransactions, apiDeleteTransactions, apiUpdateCategory,
   apiImport,
-  apiFetchCategories, apiAddCategory, apiDeleteCategory,
+  apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,
 });

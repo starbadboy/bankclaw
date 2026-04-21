@@ -739,6 +739,8 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
   const [showPalette, setShowPalette] = useStateCAT(false);
   const [saving, setSaving] = useStateCAT(false);
   const [error, setError] = useStateCAT("");
+  const [editing, setEditing] = useStateCAT(null); // { name, draftName, draftGlyph, paletteOpen }
+  const [editError, setEditError] = useStateCAT("");
 
   const customCats = useMemoCAT(() => {
     const defaults = new Set(CATEGORIES.map(c => c.name));
@@ -759,6 +761,29 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
       if (reloadCategories) await reloadCategories();
     } catch (err) {
       setError(err.message || "Failed to add");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEdit = (c) => {
+    setEditError("");
+    setEditing({ name: c.name, draftName: c.name, draftGlyph: c.glyph || "•", paletteOpen: false });
+  };
+
+  const cancelEdit = () => { setEditing(null); setEditError(""); };
+
+  const saveEdit = async () => {
+    if (!editing) return;
+    const draftName = editing.draftName.trim();
+    if (!draftName) { setEditError("Name cannot be blank"); return; }
+    setSaving(true); setEditError("");
+    try {
+      await apiRenameCategory(editing.name, { name: draftName, glyph: editing.draftGlyph });
+      setEditing(null);
+      if (reloadCategories) await reloadCategories();
+    } catch (err) {
+      setEditError(err.message || "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -849,6 +874,51 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
             {customCats.map((c) => {
               const s = spending.find((r) => r.id === c.name);
               const pct = s ? Math.round((s.total / topSpend) * 100) : 0;
+              const isEditing = editing && editing.name === c.name;
+
+              if (isEditing) {
+                return (
+                  <div key={c.name} style={{ padding: "10px 0", borderBottom: "1px solid var(--rule)" }}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => setEditing((e) => ({ ...e, paletteOpen: !e.paletteOpen }))}
+                        title="Choose icon"
+                        style={{ width: 44, fontSize: 20, padding: "8px 0", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", cursor: "pointer" }}
+                      >
+                        {editing.draftGlyph}
+                      </button>
+                      <input
+                        value={editing.draftName}
+                        onChange={(ev) => setEditing((e) => ({ ...e, draftName: ev.target.value }))}
+                        autoFocus
+                        style={{ flex: 1, padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 13 }}
+                      />
+                      <button className="btn primary" disabled={saving} onClick={saveEdit}>Save</button>
+                      <button className="btn ghost" disabled={saving} onClick={cancelEdit}>Cancel</button>
+                    </div>
+                    {editing.paletteOpen && (
+                      <div style={{ marginTop: 10, padding: 10, background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 4, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4 }}>
+                        {_EMOJI_PALETTE.map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => setEditing((e) => ({ ...e, draftGlyph: g, paletteOpen: false }))}
+                            style={{
+                              fontSize: 18, padding: 6, border: "none", borderRadius: 4, cursor: "pointer",
+                              background: g === editing.draftGlyph ? "var(--paper-3)" : "transparent",
+                            }}
+                          >
+                            {g}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {editError && <div style={{ marginTop: 8, fontSize: 12, color: "var(--debit)" }}>{editError}</div>}
+                  </div>
+                );
+              }
+
               return (
                 <div key={c.name} className="cat-row" style={{ paddingTop: 10, paddingBottom: 10 }}>
                   <span className="cat-glyph">{c.glyph || "•"}</span>
@@ -860,6 +930,7 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
                     <div className="cat-amt" style={{ fontSize: 13 }}>
                       {s ? fmtSGD(-s.total, privacy).replace("−", "") : "—"}
                     </div>
+                    <button className="btn ghost" style={{ fontSize: 12 }} onClick={() => startEdit(c)}>Edit</button>
                     <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => removeCat(c.name)}>Remove</button>
                   </div>
                 </div>
