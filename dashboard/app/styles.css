@@ -6,6 +6,7 @@
   --paper-2: oklch(0.96 0.008 82);
   --paper-3: oklch(0.92 0.01 82);
   --ink: oklch(0.15 0.012 60);
+  --ink-1: oklch(0.15 0.012 60);          /* alias of --ink for consistency */
   --ink-2: oklch(0.3 0.012 60);
   --ink-3: oklch(0.5 0.01 60);
   --ink-4: oklch(0.7 0.008 60);
@@ -33,6 +34,7 @@
   --paper-2: oklch(0.2 0.014 60);
   --paper-3: oklch(0.26 0.014 60);
   --ink: oklch(0.96 0.006 82);
+  --ink-1: oklch(0.96 0.006 82);
   --ink-2: oklch(0.82 0.008 82);
   --ink-3: oklch(0.62 0.008 82);
   --ink-4: oklch(0.44 0.008 82);
@@ -717,6 +719,130 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--paper-3); border-radius: 10px; border: 2px solid var(--paper); }
 ::-webkit-scrollbar-thumb:hover { background: var(--rule-2); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ========== Mobile / responsive ========== */
+.mobile-only { display: none; }
+.mobile-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 40; display: none;
+}
+
+/* Tablet and below */
+@media (max-width: 960px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: 260px; height: 100vh;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
+  }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .mobile-backdrop { display: block; }
+  .mobile-only { display: inline-flex; }
+
+  .topbar { padding: 14px 20px; gap: 12px; }
+  .search { min-width: 0; flex: 1; padding: 6px 12px; }
+  .search kbd { display: none; }
+  .topbar .btn.primary { padding: 8px 12px; font-size: 12px; }
+
+  .page { padding: 24px 20px 60px; }
+  .page-title { font-size: 44px; }
+  .page-sub { font-size: 13px; }
+
+  .grid-2 { grid-template-columns: 1fr; gap: 16px; }
+  .grid-3 { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+}
+
+/* Phone */
+@media (max-width: 640px) {
+  .topbar { padding: 12px 16px; gap: 8px; }
+  .topbar .crumbs { display: none; }
+  .topbar .btn.primary span,
+  .topbar .btn.primary { padding: 8px 10px; }
+  .search input { font-size: 12px; }
+
+  .page { padding: 18px 14px 60px; }
+  .page-title { font-size: 34px; line-height: 1.05; }
+  .page-kicker { font-size: 10px; letter-spacing: 0.2em; }
+
+  .grid-3,
+  .grid-4 { grid-template-columns: 1fr; }
+
+  .panel-pad { padding: 16px; }
+  .panel-hd { padding: 14px 16px; }
+  .panel-hd h3 { font-size: 18px; }
+
+  /* Drawer full-width on phone */
+  .drawer { width: 100vw !important; max-width: 100vw !important; }
+  .drawer-hd { padding: 16px 18px; }
+  .drawer-body { padding: 14px 18px 40px; }
+
+  /* Ledger row: stack date above description on narrow screens */
+  .ledger .row,
+  .ledger > div[class=""] {
+    grid-template-columns: 1fr !important;
+    gap: 4px;
+  }
+  .ledger .cell.num { justify-self: flex-end; }
+
+  /* Filter bar wraps neatly */
+  .filterbar { gap: 6px !important; }
+  .filterbar .seg { width: 100%; }
+
+  /* Modal sizing */
+  .drawer, .tweaks { max-width: 100vw; }
+
+  /* Hide the kbd shortcut badge in the search */
+  .search kbd { display: none; }
+
+  /* kv rows */
+  .kv { grid-template-columns: 100px 1fr; gap: 8px 14px; font-size: 13px; }
+
+  /* Banks grid */
+  .bank-row { grid-template-columns: 1fr !important; gap: 8px; }
+
+  /* Topbar buttons — icon only */
+  .topbar .btn.primary svg { margin-right: 0; }
+}
+
+/* Landing-page specific */
+@media (max-width: 960px) {
+  .landing-section { padding: 48px 24px !important; }
+  .landing-hero h1 { font-size: 52px !important; }
+  .landing-grid-3 { grid-template-columns: 1fr !important; }
+  .landing-grid-2 { grid-template-columns: 1fr !important; }
+  .landing-features { grid-template-columns: 1fr 1fr !important; }
+  .landing-banks { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 640px) {
+  .landing-section { padding: 40px 16px !important; }
+  .landing-hero { padding: 60px 16px 40px !important; }
+  .landing-hero h1 { font-size: 40px !important; }
+  .landing-hero .sub { font-size: 15px !important; }
+  .landing-features { grid-template-columns: 1fr !important; }
+  .landing-banks { grid-template-columns: 1fr !important; }
+  .landing-preview { padding: 16px !important; margin-top: 40px !important; }
+  .landing-preview .stats { grid-template-columns: 1fr 1fr !important; }
+  .landing-nav { padding: 16px 16px !important; }
+  .landing-cta h2 { font-size: 32px !important; }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .page-title { font-size: 28px; }
+  .topbar { padding: 10px 12px; }
+  .page { padding: 14px 10px 50px; }
+  .brand-name { font-size: 20px; }
+}
 
 /* Pulse for live elements */
 @keyframes pulse-glow {

@@ -110,7 +110,7 @@ function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
     }
   };
 
-  const cardStyle = { width: 360, padding: "48px 40px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 2px 24px rgba(0,0,0,0.08)" };
+  const cardStyle = { width: 360, maxWidth: "calc(100vw - 32px)", padding: "48px 40px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 2px 24px rgba(0,0,0,0.08)" };
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--paper)", fontFamily: "var(--sans)" }}>
@@ -249,7 +249,7 @@ function LandingPage({ onSignIn, onSignUp }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink-1)", fontFamily: "IBM Plex Sans, sans-serif" }}>
       {/* Nav */}
-      <div style={navStyle}>
+      <div className="landing-nav" style={navStyle}>
         <div style={brand}>Bankclaw</div>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn" onClick={onSignIn}>Sign in</button>
@@ -258,14 +258,14 @@ function LandingPage({ onSignIn, onSignUp }) {
       </div>
 
       {/* Hero */}
-      <div style={{ ...sectionPad, textAlign: "center", padding: "100px 48px 60px" }}>
+      <div className="landing-section landing-hero" style={{ ...sectionPad, textAlign: "center", padding: "100px 48px 60px" }}>
         <div style={{ fontSize: 11, letterSpacing: "0.25em", color: "var(--accent)", textTransform: "uppercase", marginBottom: 18 }}>
           ◆ Private Ledger · No tracking
         </div>
         <h1 style={{ fontFamily: "Bodoni Moda, serif", fontSize: 72, lineHeight: 1.05, margin: "0 0 20px", letterSpacing: "-0.02em" }}>
           Your statements, <i style={{ color: "var(--accent)" }}>understood.</i>
         </h1>
-        <div style={{ fontSize: 18, color: "var(--ink-3)", maxWidth: 620, margin: "0 auto 36px", lineHeight: 1.55 }}>
+        <div className="sub" style={{ fontSize: 18, color: "var(--ink-3)", maxWidth: 620, margin: "0 auto 36px", lineHeight: 1.55 }}>
           Drop a PDF bank statement and get a clean ledger with AI-categorised transactions,
           recurring-charge detection, and editorial-grade spending insights.
           Supports 18 banks across Asia and North America.
@@ -280,12 +280,12 @@ function LandingPage({ onSignIn, onSignUp }) {
         </div>
 
         {/* Mock overview preview */}
-        <div style={{ marginTop: 64, padding: "24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8, boxShadow: "0 30px 80px -40px oklch(0.15 0.01 60 / 0.25)", maxWidth: 1040, margin: "64px auto 0", textAlign: "left" }}>
+        <div className="landing-preview" style={{ marginTop: 64, padding: "24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8, boxShadow: "0 30px 80px -40px oklch(0.15 0.01 60 / 0.25)", maxWidth: 1040, margin: "64px auto 0", textAlign: "left" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.2em", color: "var(--ink-4)", marginBottom: 6 }}>LEDGER · APR 2026</div>
           <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 36, letterSpacing: "-0.01em" }}>
             Good morning, <i style={{ color: "var(--accent)" }}>Taylor.</i>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginTop: 28 }}>
+          <div className="stats" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginTop: 28 }}>
             {[
               { lab: "Money in", val: "12,840.00", accent: false },
               { lab: "Money out", val: "−7,206.43", accent: false },
@@ -489,7 +489,7 @@ function ChangePasswordModal({ onClose }) {
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200 }} />
-      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 201, width: 360, padding: "36px 32px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
+      <div style={{ position: "fixed", top: "50%", left: "50%", transform: "translate(-50%,-50%)", zIndex: 201, width: 360, maxWidth: "calc(100vw - 32px)", padding: "36px 32px", background: "var(--surface)", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,0.18)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div style={{ fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 20, color: "var(--ink-1)" }}>Change Password</div>
           <button className="icon-btn" onClick={onClose}><Icon name="close" size={14} /></button>
@@ -511,7 +511,7 @@ function ChangePasswordModal({ onClose }) {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, onNav, onSignOut, onChangePassword }) {
+function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobileClose }) {
   const email = getEmail() || "";
   const initials = email
     ? email.slice(0, 2).toUpperCase()
@@ -528,9 +528,12 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword }) {
     { id: "categories", label: "Categories", icon: "sparkle" },
     { id: "banks", label: "Connected banks", icon: "file" },
   ];
+  const handleNav = (id) => { onNav(id); if (onMobileClose) onMobileClose(); };
   return (
-    <aside className="sidebar">
-      <div className="brand">
+    <>
+      {mobileOpen && <div className="mobile-backdrop" onClick={onMobileClose}></div>}
+      <aside className={"sidebar" + (mobileOpen ? " mobile-open" : "")}>
+        <div className="brand">
         <div className="brand-mark">B</div>
         <div>
           <div className="brand-name">Bankclaw</div>
@@ -542,7 +545,7 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword }) {
         <div className="nav-label">Workspace</div>
         {items.map((i) => (
           <div key={i.id} className={"nav-item" + (page === i.id ? " active" : "")}
-            onClick={() => onNav(i.id)}>
+            onClick={() => handleNav(i.id)}>
             <Icon name={i.icon} size={15} stroke={1.5} />
             <span>{i.label}</span>
           </div>
@@ -552,7 +555,7 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword }) {
       <div className="nav-group">
         <div className="nav-label">Library</div>
         {meta.map((i) => (
-          <div key={i.id} className="nav-item" onClick={() => onNav(i.id)}>
+          <div key={i.id} className="nav-item" onClick={() => handleNav(i.id)}>
             <Icon name={i.icon} size={15} stroke={1.5} />
             <span>{i.label}</span>
           </div>
@@ -582,11 +585,12 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword }) {
           <Icon name="close" size={14} />
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }
 
-function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav }) {
+function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav, onOpenMobileMenu }) {
   const crumbs = {
     overview: ["Workspace", "Overview"],
     transactions: ["Workspace", "Transactions"],
@@ -598,6 +602,9 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
   }[page] || ["Workspace", page];
   return (
     <div className="topbar">
+      <button className="icon-btn mobile-only" title="Menu" onClick={onOpenMobileMenu} style={{ flexShrink: 0 }}>
+        <Icon name="menu" size={16} />
+      </button>
       <div className="crumbs">{crumbs[0]} · <b>{crumbs[1]}</b></div>
       <div className="spacer"></div>
       <div className="search">
@@ -838,6 +845,7 @@ function App() {
   const [tweaksOpen, setTweaksOpen] = useStateApp(false);
   const [editMode, setEditMode] = useStateApp(false);
   const [changePasswordOpen, setChangePasswordOpen] = useStateApp(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useStateApp(false);
 
   const loadTransactions = useCallbackApp(async () => {
     setTxLoading(true);
@@ -925,12 +933,12 @@ function App() {
 
   return (
     <div className="app">
-      <Sidebar page={page} onNav={navigate} onSignOut={handleSignOut} onChangePassword={() => setChangePasswordOpen(true)} />
+      <Sidebar page={page} onNav={navigate} onSignOut={handleSignOut} onChangePassword={() => setChangePasswordOpen(true)} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
       <main className="main">
         <Topbar page={page} query={query} setQuery={setQuery}
           privacy={tweaks.privacy}
           setPrivacy={(v) => { const t = { ...tweaks, privacy: v }; setTweaks(t); saveTweaks(t); }}
-          onOpenTweaks={() => setTweaksOpen(true)} onNav={navigate} />
+          onOpenTweaks={() => setTweaksOpen(true)} onNav={navigate} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
 
         {page === "overview" && <OverviewPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} onOpenTx={setOpenTx} />}
         {page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} availableCategories={allCategories} onTxChanged={loadTransactions} />}
