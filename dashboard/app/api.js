@@ -53,6 +53,21 @@ async function apiLogin(email, password) {
 
 async function apiLogout() { clearSession(); }
 
+async function apiSignup(email, password) {
+  const res = await fetch("/api/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Sign-up failed");
+  }
+  const data = await res.json();
+  _saveSession(data.token, data.email);
+  return data;
+}
+
 async function apiResetPassword(email, newPassword) {
   const res = await fetch("/api/auth/reset-password", {
     method: "POST",
@@ -295,7 +310,7 @@ window.getCatInfo = getCatInfo;
 
 Object.assign(window, {
   getToken, getEmail, clearSession, isLoggedIn,
-  apiLogin, apiLogout, apiResetPassword, apiChangePassword,
+  apiLogin, apiLogout, apiSignup, apiResetPassword, apiChangePassword,
   apiFetchTransactions, apiCreateTransaction, apiDeleteTransactions, apiUpdateCategory,
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,

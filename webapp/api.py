@@ -98,6 +98,27 @@ async def me(user: str = Depends(_current_user)) -> dict:
     return {"email": user}
 
 
+@app.post("/api/auth/signup")
+async def signup(request: Request) -> dict:
+    body = await request.json()
+    from webapp.auth import hash_password, normalize_email  # noqa: PLC0415
+    email = normalize_email(str(body.get("email", "")))
+    password = str(body.get("password", ""))
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email required")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    try:
+        from webapp.user_repository import create_user  # noqa: PLC0415
+        created = create_user(email, hash_password(password))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail="User accounts unavailable") from exc
+    if not created:
+        raise HTTPException(status_code=409, detail="An account with this email already exists")
+    token = create_auth_token(email)
+    return {"token": token, "email": email}
+
+
 @app.post("/api/auth/reset-password")
 async def reset_password(request: Request) -> dict:
     """Unauthenticated reset — matches Streamlit 'Reset Password' tab behaviour."""

@@ -53,10 +53,11 @@ function _AuthSuccess({ msg }) {
 
 // ── Login page ─────────────────────────────────────────────────────────────
 
-function LoginPage({ onLogin }) {
-  const [mode, setMode] = useStateApp("login"); // login | reset
+function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
+  const [mode, setMode] = useStateApp(initialMode); // login | reset | signup
   const [email, setEmail] = useStateApp("");
   const [password, setPassword] = useStateApp("");
+  const [confirmPassword, setConfirmPassword] = useStateApp("");
   const [newPassword, setNewPassword] = useStateApp("");
   const [error, setError] = useStateApp("");
   const [success, setSuccess] = useStateApp("");
@@ -73,6 +74,22 @@ function LoginPage({ onLogin }) {
       onLogin();
     } catch (err) {
       setError(err.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitSignup = async (e) => {
+    e.preventDefault();
+    setError(""); setSuccess("");
+    if (password !== confirmPassword) { setError("Passwords don't match"); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters"); return; }
+    setLoading(true);
+    try {
+      await apiSignup(email, password);
+      onLogin();
+    } catch (err) {
+      setError(err.message || "Sign-up failed");
     } finally {
       setLoading(false);
     }
@@ -103,7 +120,7 @@ function LoginPage({ onLogin }) {
             Bankclaw
           </div>
           <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 6 }}>
-            {mode === "login" ? "Private Ledger" : "Reset Password"}
+            {mode === "login" ? "Private Ledger" : mode === "signup" ? "Create account" : "Reset Password"}
           </div>
         </div>
 
@@ -116,9 +133,30 @@ function LoginPage({ onLogin }) {
             <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
               {loading ? "Signing in…" : "Sign in"}
             </button>
-            <div style={{ marginTop: 16, textAlign: "center" }}>
-              <button type="button" onClick={() => switchMode("reset")} style={{ background: "none", border: "none", fontSize: 12, color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
+            <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+              <button type="button" onClick={() => switchMode("signup")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 500 }}>
+                Create account
+              </button>
+              <button type="button" onClick={() => switchMode("reset")} style={{ background: "none", border: "none", color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
                 Forgot password?
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === "signup" && (
+          <form onSubmit={submitSignup}>
+            <_FormField label="Email" type="email" value={email} onChange={setEmail} placeholder="you@example.com" />
+            <_FormField label="Password" type="password" value={password} onChange={setPassword} placeholder="Min. 8 characters" />
+            <_FormField label="Confirm Password" type="password" value={confirmPassword} onChange={setConfirmPassword} placeholder="••••••••" />
+            <_AuthError msg={error} />
+            <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
+              {loading ? "Creating…" : "Create account"}
+            </button>
+            <div style={{ marginTop: 16, textAlign: "center", fontSize: 12, color: "var(--ink-3)" }}>
+              Already have an account?{" "}
+              <button type="button" onClick={() => switchMode("login")} style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontWeight: 500 }}>
+                Sign in
               </button>
             </div>
           </form>
@@ -139,6 +177,171 @@ function LoginPage({ onLogin }) {
             </div>
           </form>
         )}
+
+        {onBackHome && (
+          <div style={{ marginTop: 24, textAlign: "center" }}>
+            <button type="button" onClick={onBackHome} style={{ background: "none", border: "none", fontSize: 11, color: "var(--ink-4)", cursor: "pointer" }}>
+              ← Back to home
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Landing page ───────────────────────────────────────────────────────────
+
+function LandingPage({ onSignIn, onSignUp }) {
+  const navStyle = {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "20px 48px", borderBottom: "1px solid var(--rule)",
+  };
+  const brand = { fontFamily: "Bodoni Moda, Georgia, serif", fontSize: 22, color: "var(--ink-1)", letterSpacing: "-0.01em" };
+
+  const sectionPad = { padding: "80px 48px", maxWidth: 1200, margin: "0 auto" };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--paper)", color: "var(--ink-1)", fontFamily: "IBM Plex Sans, sans-serif" }}>
+      {/* Nav */}
+      <div style={navStyle}>
+        <div style={brand}>Bankclaw</div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn" onClick={onSignIn}>Sign in</button>
+          <button className="btn primary" onClick={onSignUp}>Create account</button>
+        </div>
+      </div>
+
+      {/* Hero */}
+      <div style={{ ...sectionPad, textAlign: "center", padding: "100px 48px 60px" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.25em", color: "var(--accent)", textTransform: "uppercase", marginBottom: 18 }}>
+          ◆ Private Ledger · No tracking
+        </div>
+        <h1 style={{ fontFamily: "Bodoni Moda, serif", fontSize: 72, lineHeight: 1.05, margin: "0 0 20px", letterSpacing: "-0.02em" }}>
+          Your statements, <i style={{ color: "var(--accent)" }}>understood.</i>
+        </h1>
+        <div style={{ fontSize: 18, color: "var(--ink-3)", maxWidth: 620, margin: "0 auto 36px", lineHeight: 1.55 }}>
+          Drop a PDF bank statement and get a clean ledger with AI-categorised transactions,
+          recurring-charge detection, and editorial-grade spending insights.
+          Supports 18 banks across Asia and North America.
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 12 }}>
+          <button className="btn primary" onClick={onSignUp} style={{ padding: "12px 22px", fontSize: 14 }}>
+            Create free account →
+          </button>
+          <button className="btn" onClick={onSignIn} style={{ padding: "12px 22px", fontSize: 14 }}>
+            I already have one
+          </button>
+        </div>
+
+        {/* Mock overview preview */}
+        <div style={{ marginTop: 64, padding: "24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8, boxShadow: "0 30px 80px -40px oklch(0.15 0.01 60 / 0.25)", maxWidth: 880, margin: "64px auto 0", textAlign: "left" }}>
+          <div style={{ fontSize: 10, letterSpacing: "0.2em", color: "var(--ink-4)", marginBottom: 6 }}>LEDGER · APR 2026</div>
+          <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 36, letterSpacing: "-0.01em" }}>
+            Good morning, <i style={{ color: "var(--accent)" }}>Taylor.</i>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginTop: 28 }}>
+            {[
+              { lab: "Money in", val: "12,840.00", accent: false },
+              { lab: "Money out", val: "−7,206.43", accent: false },
+              { lab: "Net", val: "+5,633.57", accent: true },
+              { lab: "Subscriptions", val: "19", accent: false },
+            ].map((s) => (
+              <div key={s.lab} style={{ padding: "14px 16px", background: s.accent ? "var(--ink-1)" : "var(--paper-2)", color: s.accent ? "var(--paper)" : "var(--ink-1)", borderRadius: 4 }}>
+                <div style={{ fontSize: 10, letterSpacing: "0.18em", opacity: 0.7, marginBottom: 6 }}>{s.lab.toUpperCase()}</div>
+                <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 22, fontWeight: 500 }}>{s.val}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* How it works */}
+      <div style={{ ...sectionPad, padding: "60px 48px" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.25em", color: "var(--accent)", textTransform: "uppercase", textAlign: "center", marginBottom: 18 }}>
+          ◆ How it works
+        </div>
+        <h2 style={{ fontFamily: "Bodoni Moda, serif", fontSize: 40, textAlign: "center", margin: "0 0 48px", letterSpacing: "-0.01em" }}>
+          Three steps, <i>one ledger.</i>
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          {[
+            { n: "01", t: "Import", d: "Drop a PDF statement. Bankclaw auto-detects your bank, unlocks password-protected files, runs OCR when needed." },
+            { n: "02", t: "Categorise", d: "AI tags every transaction into the right bucket: Food & Dining, Transport, Shopping… or your own custom categories." },
+            { n: "03", t: "Understand", d: "Cash-flow trends, recurring charges, top merchants, largest expenses — all in one editorial dashboard." },
+          ].map((step) => (
+            <div key={step.n} style={{ padding: 28, border: "1px solid var(--rule)", borderRadius: 4, background: "var(--surface)" }}>
+              <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 44, color: "var(--accent)", lineHeight: 1, marginBottom: 12 }}>{step.n}</div>
+              <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 22, marginBottom: 8 }}>{step.t}</div>
+              <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 }}>{step.d}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Features */}
+      <div style={{ ...sectionPad, padding: "60px 48px" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.25em", color: "var(--accent)", textTransform: "uppercase", textAlign: "center", marginBottom: 18 }}>
+          ◆ Features
+        </div>
+        <h2 style={{ fontFamily: "Bodoni Moda, serif", fontSize: 40, textAlign: "center", margin: "0 0 48px", letterSpacing: "-0.01em" }}>
+          Built for <i>people who care about their books.</i>
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+          {[
+            { i: "🔒", t: "Private by default", d: "Statements never leave your account. No analytics, no third-party trackers, no selling your data." },
+            { i: "🏦", t: "18 bank layouts", d: "DBS/POSB, OCBC, UOB, Chase, HSBC, Standard Chartered, Maybank, and more — credit + debit statements." },
+            { i: "🎯", t: "Custom categories", d: "Add your own tags with emojis (Tax, Investment, Loan…) — rename and re-tag transactions freely." },
+            { i: "🔁", t: "Recurring detection", d: "Spots subscriptions across months automatically, so you can cancel what you forgot you had." },
+            { i: "✍", t: "Manual entries", d: "Log cash, IOUs, or anything that didn't come from a statement — your ledger stays complete." },
+            { i: "📤", t: "Full export", d: "Your data is yours. Export clean CSVs anytime, for any range." },
+          ].map((f) => (
+            <div key={f.t} style={{ padding: 24, borderLeft: "2px solid var(--accent)", background: "var(--paper-2)" }}>
+              <div style={{ fontSize: 24, marginBottom: 10 }}>{f.i}</div>
+              <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 19, marginBottom: 6 }}>{f.t}</div>
+              <div style={{ fontSize: 13, color: "var(--ink-3)", lineHeight: 1.55 }}>{f.d}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Supported banks */}
+      <div style={{ ...sectionPad, padding: "60px 48px" }}>
+        <div style={{ fontSize: 11, letterSpacing: "0.25em", color: "var(--accent)", textTransform: "uppercase", textAlign: "center", marginBottom: 18 }}>
+          ◆ Supported
+        </div>
+        <h2 style={{ fontFamily: "Bodoni Moda, serif", fontSize: 40, textAlign: "center", margin: "0 0 14px", letterSpacing: "-0.01em" }}>
+          {SUPPORTED_BANKS.length} bank <i>statement layouts.</i>
+        </h2>
+        <div style={{ textAlign: "center", fontSize: 13, color: "var(--ink-3)", marginBottom: 36 }}>
+          Across Singapore, Canada, the US, Switzerland, and more.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+          {SUPPORTED_BANKS.map((b) => (
+            <div key={b.name} style={{ padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 4, fontSize: 13 }}>
+              {b.name}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div style={{ ...sectionPad, textAlign: "center", padding: "80px 48px" }}>
+        <h2 style={{ fontFamily: "Bodoni Moda, serif", fontSize: 48, margin: "0 0 20px", letterSpacing: "-0.01em" }}>
+          Ready for a <i style={{ color: "var(--accent)" }}>private ledger?</i>
+        </h2>
+        <div style={{ fontSize: 16, color: "var(--ink-3)", marginBottom: 30 }}>
+          Free to use. Your data stays with you.
+        </div>
+        <button className="btn primary" onClick={onSignUp} style={{ padding: "14px 28px", fontSize: 15 }}>
+          Create free account →
+        </button>
+      </div>
+
+      {/* Footer */}
+      <div style={{ borderTop: "1px solid var(--rule)", padding: "24px 48px", display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--ink-4)" }}>
+        <div>© Bankclaw · Private Ledger</div>
+        <div>Built on <span style={{ fontStyle: "italic" }}>monopoly-core</span></div>
       </div>
     </div>
   );
@@ -503,6 +706,7 @@ function TweaksPanel({ open, onClose, state, setState, saveState }) {
 /* ============ ROOT APP ============ */
 function App() {
   const [authed, setAuthed] = useStateApp(isLoggedIn());
+  const [authView, setAuthView] = useStateApp("landing"); // landing | login | signup (only used when !authed)
   const [transactions, setTransactions] = useStateApp([]);
   const [txLoading, setTxLoading] = useStateApp(false);
   const [allCategories, setAllCategories] = useStateApp([]); // [{ id?, name, glyph }] built-ins + custom
@@ -589,7 +793,21 @@ function App() {
   const navigate = (p) => { setPage(p); setOpenTx(null); };
 
   if (!authed) {
-    return <LoginPage onLogin={() => { setAuthed(true); }} />;
+    if (authView === "landing") {
+      return (
+        <LandingPage
+          onSignIn={() => setAuthView("login")}
+          onSignUp={() => setAuthView("signup")}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        onLogin={() => { setAuthed(true); setAuthView("landing"); }}
+        initialMode={authView === "signup" ? "signup" : "login"}
+        onBackHome={() => setAuthView("landing")}
+      />
+    );
   }
 
   return (
@@ -1049,4 +1267,4 @@ function BanksPage({ transactions, privacy, onNav }) {
   );
 }
 
-Object.assign(window, { App, LoginPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, BanksPage });
+Object.assign(window, { App, LoginPage, LandingPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, BanksPage });
