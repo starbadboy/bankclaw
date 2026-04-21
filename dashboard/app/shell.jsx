@@ -192,6 +192,51 @@ function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
 
 // ── Landing page ───────────────────────────────────────────────────────────
 
+// Deterministic mock data generators for the demo previews
+function _buildMockDailyFlow(days = 30) {
+  const end = new Date();
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(end); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+    // deterministic pseudo-random pattern
+    const seed = (i * 7919) % 101;
+    const dayOfMonth = d.getDate();
+    const income = dayOfMonth === 1 || dayOfMonth === 15 ? 5200 + (seed * 4) : (seed < 12 ? 80 + seed * 6 : 0);
+    const spend = 45 + (seed % 180) + (dayOfMonth % 7 === 0 ? 220 : 0);
+    out.push({ date: d, income, spend });
+  }
+  return out;
+}
+
+function _buildMockMonthlyBars() {
+  const base = [
+    { label: "Oct", income: 8200, spend: 9100 },
+    { label: "Nov", income: 11400, spend: 8300 },
+    { label: "Dec", income: 7800, spend: 14600 },
+    { label: "Jan", income: 14200, spend: 15100 },
+    { label: "Feb", income: 19800, spend: 17500 },
+    { label: "Mar", income: 18300, spend: 21200 },
+  ];
+  return base;
+}
+
+function _buildMockRingSegments() {
+  // Mix of built-in + custom-sounding tags
+  return [
+    { id: "tax",         value: 7510.35, color: "oklch(0.45 0.09 155)", cat: { name: "Tax" } },
+    { id: "loan",        value: 6000.00, color: "oklch(0.48 0.15 30)",  cat: { name: "Loan" } },
+    { id: "food",        value: 4634.10, color: "oklch(0.52 0.09 240)", cat: { name: "Food & Dining" } },
+    { id: "travel",      value: 4120.78, color: "oklch(0.68 0.12 85)",  cat: { name: "Travel" } },
+    { id: "insurance",   value: 2795.12, color: "oklch(0.55 0.14 305)", cat: { name: "Insurance" } },
+    { id: "shopping",    value: 2716.82, color: "oklch(0.60 0.10 195)", cat: { name: "Shopping" } },
+    { id: "investment",  value: 2000.00, color: "oklch(0.62 0.10 20)",  cat: { name: "Investment" } },
+    { id: "charging",    value: 1964.02, color: "oklch(0.55 0.08 140)", cat: { name: "Charging&Parking" } },
+    { id: "utilities",   value: 1189.41, color: "oklch(0.58 0.08 90)",  cat: { name: "Utilities" } },
+    { id: "entertain",   value: 512.91,  color: "oklch(0.52 0.05 60)",  cat: { name: "Entertainment" } },
+    { id: "transport",   value: 506.88,  color: "oklch(0.50 0.10 150)", cat: { name: "Transport" } },
+  ];
+}
+
 function LandingPage({ onSignIn, onSignUp }) {
   const navStyle = {
     display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -235,7 +280,7 @@ function LandingPage({ onSignIn, onSignUp }) {
         </div>
 
         {/* Mock overview preview */}
-        <div style={{ marginTop: 64, padding: "24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8, boxShadow: "0 30px 80px -40px oklch(0.15 0.01 60 / 0.25)", maxWidth: 880, margin: "64px auto 0", textAlign: "left" }}>
+        <div style={{ marginTop: 64, padding: "24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8, boxShadow: "0 30px 80px -40px oklch(0.15 0.01 60 / 0.25)", maxWidth: 1040, margin: "64px auto 0", textAlign: "left" }}>
           <div style={{ fontSize: 10, letterSpacing: "0.2em", color: "var(--ink-4)", marginBottom: 6 }}>LEDGER · APR 2026</div>
           <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 36, letterSpacing: "-0.01em" }}>
             Good morning, <i style={{ color: "var(--accent)" }}>Taylor.</i>
@@ -252,6 +297,74 @@ function LandingPage({ onSignIn, onSignUp }) {
                 <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 22, fontWeight: 500 }}>{s.val}</div>
               </div>
             ))}
+          </div>
+
+          {/* 30-day cash flow sparkline */}
+          <div style={{ marginTop: 24, padding: "18px 20px", background: "var(--paper-2)", borderRadius: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.18em", color: "var(--ink-3)", textTransform: "uppercase" }}>◆ 30-day cash flow</div>
+              <div style={{ fontSize: 11, color: "var(--ink-4)" }}>
+                <span style={{ color: "var(--credit)" }}>— IN</span>
+                <span style={{ marginLeft: 12, color: "var(--debit)" }}>— OUT</span>
+              </div>
+            </div>
+            <Sparkline data={_buildMockDailyFlow(30)} height={120} />
+          </div>
+        </div>
+      </div>
+
+      {/* Insights preview */}
+      <div style={{ ...sectionPad, padding: "40px 48px 20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 20 }}>
+          <div style={{ padding: "22px 24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+              <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 22 }}>Cash flow · last 6 months</div>
+              <div style={{ fontSize: 11, color: "var(--ink-4)" }}>
+                <span style={{ color: "var(--credit)" }}>— IN</span>
+                <span style={{ marginLeft: 12, color: "var(--debit)" }}>— OUT</span>
+              </div>
+            </div>
+            <Bars data={_buildMockMonthlyBars()} height={200} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--rule)" }}>
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--ink-4)", textTransform: "uppercase" }}>6-month income</div>
+                <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 20, color: "var(--credit)", marginTop: 4 }}>79,700.00</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--ink-4)", textTransform: "uppercase" }}>6-month spend</div>
+                <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 20, color: "var(--debit)", marginTop: 4 }}>−85,800.00</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--ink-4)", textTransform: "uppercase" }}>Savings rate</div>
+                <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 20, marginTop: 4 }}>−8%</div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ padding: "22px 24px", background: "var(--surface)", border: "1px solid var(--rule)", borderRadius: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+              <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 22 }}>Category split</div>
+              <div style={{ fontSize: 10, letterSpacing: "0.14em", color: "var(--ink-4)", textTransform: "uppercase" }}>Mock data</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+              <Ring segments={_buildMockRingSegments()} size={170} thickness={20} center={
+                <div>
+                  <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 24, color: "var(--ink-1)" }}>22%</div>
+                  <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-4)", marginTop: 3 }}>Tax</div>
+                </div>
+              } />
+              <div style={{ flex: 1, fontSize: 12, color: "var(--ink-2)" }}>
+                {_buildMockRingSegments().slice(0, 6).map((s) => (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: "inline-block" }}></span>
+                      {s.cat.name}
+                    </div>
+                    <div className="tnum" style={{ color: "var(--ink-3)" }}>{s.value.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
