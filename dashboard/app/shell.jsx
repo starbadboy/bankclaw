@@ -368,7 +368,7 @@ function Drawer({ tx, onClose, privacy, onChanged }) {
               </div>
 
               <div className="kv">
-                <div className="k">Date</div><div>{fmtDate(tx.date, { long: true })} · {fmtDate(tx.date, { time: true })}</div>
+                <div className="k">Date</div><div>{fmtDate(tx.date, { long: true })}</div>
                 <div className="k">Bank</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ width: 18, height: 18, borderRadius: 3, background: bank.color, display: "inline-block" }}></span>

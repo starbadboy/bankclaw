@@ -132,7 +132,7 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
                   return (
                     <div key={t.id} className="row" onClick={() => onOpenTx(t)}>
                       <div className="cell mono" style={{ color: "var(--ink-3)", fontSize: 12 }}>
-                        {fmtDate(t.date, { time: true })}
+                        {fmtDate(t.date)}
                       </div>
                       <div className="cell desc">
                         <div>{t.description}</div>
