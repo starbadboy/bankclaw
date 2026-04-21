@@ -21,7 +21,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
 from webapp.auth import create_auth_token, verify_auth_token
-from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories
+from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
 
 # optional MongoDB — gracefully degrade when not configured
 try:
@@ -203,8 +203,9 @@ async def patch_transaction_category(request: Request, user: str = Depends(_curr
 # ---------------------------------------------------------------------------
 @app.get("/api/categories")
 async def get_categories(user: str = Depends(_current_user)) -> dict:
-    cats = get_effective_categories(user) if _MONGO else DEFAULT_CATEGORIES
-    return {"categories": cats}
+    if _MONGO:
+        return {"categories": get_effective_categories_full(user)}
+    return {"categories": get_effective_categories_full(None)}
 
 
 @app.post("/api/categories")
@@ -212,7 +213,7 @@ async def add_category(request: Request, user: str = Depends(_current_user)) -> 
     if not _MONGO:
         raise HTTPException(status_code=503, detail="Database not available")
     body = await request.json()
-    save_custom_category(body.get("name", ""), user)
+    save_custom_category(body.get("name", ""), user, body.get("glyph"))
     return {"status": "ok"}
 
 

@@ -63,3 +63,55 @@ def get_effective_categories(user_email: str | None) -> list[str]:
 
     custom_categories = get_custom_categories(user_email).to_dict("records")
     return build_effective_categories(custom_categories)
+
+
+# Built-in glyphs (kept in sync with the frontend CATEGORIES list)
+DEFAULT_CATEGORY_GLYPHS: dict[str, str] = {
+    "Food & Dining": "🍽",
+    "Transport": "🚕",
+    "Shopping": "🛍",
+    "Entertainment": "🎬",
+    "Utilities": "⚡",
+    "Healthcare": "✚",
+    "Travel": "✈",
+    "Income": "↑",
+    "Transfer": "⇄",
+    "Other": "•",
+}
+
+
+def get_effective_categories_full(user_email: str | None) -> list[dict]:
+    """Returns categories with glyph + custom flag — used by the React dashboard."""
+    if not user_email:
+        return [
+            {"name": name, "glyph": DEFAULT_CATEGORY_GLYPHS.get(name, "•"), "custom": False}
+            for name in DEFAULT_CATEGORIES
+        ]
+
+    from webapp.repository import get_custom_categories
+
+    custom_records = get_custom_categories(user_email).to_dict("records")
+    out: list[dict] = []
+    seen: set[str] = set()
+    for name in DEFAULT_CATEGORIES:
+        if name == "Other":
+            continue
+        out.append({"name": name, "glyph": DEFAULT_CATEGORY_GLYPHS[name], "custom": False})
+        seen.add(_normalize_category_name(name))
+
+    for rec in custom_records:
+        if rec.get("is_active", True) is not True:
+            continue
+        cleaned = " ".join(str(rec.get("name", "")).split())
+        norm = _normalize_category_name(cleaned)
+        if not cleaned or norm in seen:
+            continue
+        out.append({
+            "name": cleaned,
+            "glyph": rec.get("glyph") or "•",
+            "custom": True,
+        })
+        seen.add(norm)
+
+    out.append({"name": "Other", "glyph": DEFAULT_CATEGORY_GLYPHS["Other"], "custom": False})
+    return out

@@ -176,13 +176,15 @@ def get_category_memory(user_email: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def save_custom_category(name: str, user_email: str) -> int:
+def save_custom_category(name: str, user_email: str, glyph: str | None = None) -> int:
     if not isinstance(name, str):
         raise ValueError("Category name must be a string")
 
     cleaned_name = " ".join(name.split())
     if not cleaned_name:
         raise ValueError("Category name cannot be blank")
+
+    cleaned_glyph = (glyph or "").strip() or "•"
 
     normalized_name = _normalize_category_name(cleaned_name)
     now = datetime.now(tz=timezone.utc).isoformat()
@@ -213,6 +215,7 @@ def save_custom_category(name: str, user_email: str) -> int:
         "$set": {
             **filter_doc,
             "name": cleaned_name,
+            "glyph": cleaned_glyph,
             "is_active": True,
             "updated_at": now,
         },

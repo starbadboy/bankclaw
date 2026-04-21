@@ -107,9 +107,10 @@ const _CAT_ID_TO_NAME = {
   travel: "Travel", income: "Income", transfer: "Transfer", other: "Other",
 };
 
-async function apiUpdateCategory(tx, newCategoryId) {
+// Accepts either a built-in id ("food") or a literal category name ("Investment")
+async function apiUpdateCategory(tx, newCategoryIdOrName) {
   const raw = tx._raw || {};
-  const apiCategory = _CAT_ID_TO_NAME[newCategoryId] || "Other";
+  const apiCategory = _CAT_ID_TO_NAME[newCategoryIdOrName] || newCategoryIdOrName;
   const payload = {
     transaction: {
       date: raw.date, description: raw.description,
@@ -150,15 +151,26 @@ async function apiImport(files, { password = null, categorize = true } = {}) {
 
 // ── Categories ────────────────────────────────────────────────────────────
 
+// Returns full category objects: [{ name, glyph, custom }]
 async function apiFetchCategories() {
   const res = await _fetch("/api/categories");
-  if (!res.ok) return DEFAULT_CATEGORIES.map(c => c.name);
+  if (!res.ok) {
+    return (typeof CATEGORIES !== "undefined" ? CATEGORIES : []).map(c => ({
+      name: c.name, glyph: c.glyph, custom: false,
+    }));
+  }
   const data = await res.json();
-  return data.categories || [];
+  const cats = data.categories || [];
+  // Backward-compat: API may return list of strings (older deploy) — normalize to objects
+  return cats.map((c) => typeof c === "string"
+    ? { name: c, glyph: "•", custom: false }
+    : c);
 }
 
-async function apiAddCategory(name) {
-  const res = await _fetch("/api/categories", { method: "POST", body: JSON.stringify({ name }) });
+async function apiAddCategory(name, glyph) {
+  const body = { name };
+  if (glyph) body.glyph = glyph;
+  const res = await _fetch("/api/categories", { method: "POST", body: JSON.stringify(body) });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
   return res.json();
 }

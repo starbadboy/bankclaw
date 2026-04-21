@@ -301,7 +301,7 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
   );
 }
 
-function Drawer({ tx, onClose, privacy, onChanged }) {
+function Drawer({ tx, onClose, privacy, onChanged, availableCategories = [] }) {
   const { useState: useStateD } = React;
   const [picking, setPicking] = useStateD(false);
   const [busy, setBusy] = useStateD(false);
@@ -310,11 +310,12 @@ function Drawer({ tx, onClose, privacy, onChanged }) {
   const cat = tx && CATEGORIES.find((c) => c.id === tx.category);
   const bank = tx && BANKS.find((b) => b.id === tx.bank);
 
-  const handleRecategorise = async (newCatId) => {
-    if (!tx || newCatId === tx.category) { setPicking(false); return; }
+  // Pass either a built-in id ("food") or a custom category name ("Investment")
+  const handleRecategorise = async (idOrName) => {
+    if (!tx) return;
     setBusy(true); setErr("");
     try {
-      await apiUpdateCategory(tx, newCatId);
+      await apiUpdateCategory(tx, idOrName);
       setPicking(false);
       if (onChanged) await onChanged();
       onClose();
@@ -395,28 +396,37 @@ function Drawer({ tx, onClose, privacy, onChanged }) {
                 </div>
               </div>
 
-              {picking && (
-                <div style={{ padding: "14px 0", borderBottom: "1px solid var(--rule)" }}>
-                  <div className="tag" style={{ marginBottom: 10 }}>Choose new category</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                    {CATEGORIES.map((c) => (
-                      <button
-                        key={c.id}
-                        className="chip"
-                        disabled={busy}
-                        onClick={() => handleRecategorise(c.id)}
-                        style={{
-                          cursor: busy ? "not-allowed" : "pointer",
-                          opacity: busy ? 0.5 : 1,
-                          background: c.id === tx.category ? "var(--paper-2)" : "transparent",
-                        }}
-                      >
-                        {c.glyph} {c.name}
-                      </button>
-                    ))}
+              {picking && (() => {
+                // Merge built-ins (with ids) + customs (name only)
+                const builtIns = CATEGORIES.map((c) => ({ key: c.id, label: `${c.glyph} ${c.name}`, value: c.id, name: c.name }));
+                const builtInNames = new Set(CATEGORIES.map((c) => c.name));
+                const customs = (availableCategories || [])
+                  .filter((c) => c && c.custom && !builtInNames.has(c.name))
+                  .map((c) => ({ key: `custom-${c.name}`, label: `${c.glyph || "•"} ${c.name}`, value: c.name, name: c.name }));
+                const all = [...builtIns, ...customs];
+                return (
+                  <div style={{ padding: "14px 0", borderBottom: "1px solid var(--rule)" }}>
+                    <div className="tag" style={{ marginBottom: 10 }}>Choose new category</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {all.map((c) => (
+                        <button
+                          key={c.key}
+                          className="chip"
+                          disabled={busy}
+                          onClick={() => handleRecategorise(c.value)}
+                          style={{
+                            cursor: busy ? "not-allowed" : "pointer",
+                            opacity: busy ? 0.5 : 1,
+                            background: cat && c.name === cat.name ? "var(--paper-2)" : "transparent",
+                          }}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {err && (
                 <div style={{ padding: "10px 12px", marginTop: 12, background: "var(--paper-2)", color: "var(--debit)", fontSize: 12, borderRadius: 4 }}>
@@ -496,6 +506,7 @@ function App() {
   const [authed, setAuthed] = useStateApp(isLoggedIn());
   const [transactions, setTransactions] = useStateApp([]);
   const [txLoading, setTxLoading] = useStateApp(false);
+  const [allCategories, setAllCategories] = useStateApp([]); // [{ id?, name, glyph }] built-ins + custom
 
   const [tweaks, setTweaks] = useStateApp(() => {
     try { const s = JSON.parse(localStorage.getItem("bc_tweaks") || "null"); if (s) return { ...TWEAK_DEFAULTS, ...s }; } catch {}
@@ -523,9 +534,16 @@ function App() {
     setTxLoading(false);
   }, []);
 
-  // Load transactions on first authed render
+  const loadCategories = useCallbackApp(async () => {
+    try {
+      const cats = await apiFetchCategories();
+      setAllCategories(cats);
+    } catch {}
+  }, []);
+
+  // Load transactions + categories on first authed render
   useEffectApp(() => {
-    if (authed) loadTransactions();
+    if (authed) { loadTransactions(); loadCategories(); }
   }, [authed]);
 
   // Listen for 401 logout events from api.js
@@ -588,11 +606,11 @@ function App() {
         {page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
         {page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} />}
         {page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
-        {page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} />}
+        {page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} availableCategories={allCategories} reloadCategories={loadCategories} />}
         {page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
       </main>
 
-      <Drawer tx={openTx} onClose={() => setOpenTx(null)} privacy={tweaks.privacy} onChanged={loadTransactions} />
+      <Drawer tx={openTx} onClose={() => setOpenTx(null)} privacy={tweaks.privacy} onChanged={loadTransactions} availableCategories={allCategories} />
 
       {editMode && (
         <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)}
@@ -707,19 +725,25 @@ function HistoryPage({ transactions, privacy, onOpenTx }) {
 
 // ── Categories page ──────────────────────────────────────────────────────────
 
-function CategoriesPage({ transactions, privacy }) {
+const _EMOJI_PALETTE = [
+  "💰","💼","📈","📊","🏦","🏠","🏥","🎓","🎁","🎉",
+  "💡","🔧","🛠","🚗","🚌","✈","⛵","🏖","🎮","🎵",
+  "📱","💻","📚","✏","✂","🌱","🐾","☕","🍷","🍕",
+  "👶","👨‍👩‍👧","💊","🧘","🏋","🎨","🛒","💳","📦","•",
+];
+
+function CategoriesPage({ transactions, privacy, availableCategories = [], reloadCategories }) {
   const { useState: useStateCAT, useMemo: useMemoCAT } = React;
   const [newCat, setNewCat] = useStateCAT("");
-  const [customCats, setCustomCats] = useStateCAT([]);
+  const [newGlyph, setNewGlyph] = useStateCAT("💰");
+  const [showPalette, setShowPalette] = useStateCAT(false);
   const [saving, setSaving] = useStateCAT(false);
   const [error, setError] = useStateCAT("");
 
-  React.useEffect(() => {
-    apiFetchCategories().then((cats) => {
-      const defaults = new Set(CATEGORIES.map(c => c.name));
-      setCustomCats(cats.filter(c => !defaults.has(c)));
-    }).catch(() => {});
-  }, []);
+  const customCats = useMemoCAT(() => {
+    const defaults = new Set(CATEGORIES.map(c => c.name));
+    return (availableCategories || []).filter(c => c && !defaults.has(c.name));
+  }, [availableCategories]);
 
   const spending = useMemoCAT(() => spendByCategory(transactions), [transactions]);
   const topSpend = spending[0]?.total || 1;
@@ -730,9 +754,9 @@ function CategoriesPage({ transactions, privacy }) {
     if (!name) return;
     setSaving(true); setError("");
     try {
-      await apiAddCategory(name);
-      setCustomCats((prev) => [...prev, name]);
-      setNewCat("");
+      await apiAddCategory(name, newGlyph);
+      setNewCat(""); setNewGlyph("💰"); setShowPalette(false);
+      if (reloadCategories) await reloadCategories();
     } catch (err) {
       setError(err.message || "Failed to add");
     } finally {
@@ -743,7 +767,7 @@ function CategoriesPage({ transactions, privacy }) {
   const removeCat = async (name) => {
     try {
       await apiDeleteCategory(name);
-      setCustomCats((prev) => prev.filter(c => c !== name));
+      if (reloadCategories) await reloadCategories();
     } catch {}
   };
 
@@ -780,13 +804,40 @@ function CategoriesPage({ transactions, privacy }) {
         <div className="panel">
           <div className="panel-hd"><h3>Custom categories</h3></div>
           <div className="panel-pad">
-            <form onSubmit={addCat} style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-              <input
-                value={newCat} onChange={(e) => setNewCat(e.target.value)}
-                placeholder="e.g. Gym, Hobbies, Kids…"
-                style={{ flex: 1, padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 13 }}
-              />
-              <button type="submit" className="btn primary" disabled={saving || !newCat.trim()}>Add</button>
+            <form onSubmit={addCat} style={{ marginBottom: 20 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPalette((v) => !v)}
+                  title="Choose icon"
+                  style={{ width: 44, fontSize: 20, padding: "8px 0", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", cursor: "pointer" }}
+                >
+                  {newGlyph}
+                </button>
+                <input
+                  value={newCat} onChange={(e) => setNewCat(e.target.value)}
+                  placeholder="e.g. Gym, Hobbies, Kids…"
+                  style={{ flex: 1, padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 13 }}
+                />
+                <button type="submit" className="btn primary" disabled={saving || !newCat.trim()}>Add</button>
+              </div>
+              {showPalette && (
+                <div style={{ marginTop: 10, padding: 10, background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 4, display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4 }}>
+                  {_EMOJI_PALETTE.map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => { setNewGlyph(g); setShowPalette(false); }}
+                      style={{
+                        fontSize: 18, padding: 6, border: "none", borderRadius: 4, cursor: "pointer",
+                        background: g === newGlyph ? "var(--paper-3)" : "transparent",
+                      }}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              )}
             </form>
             {error && <div style={{ marginBottom: 12, fontSize: 12, color: "var(--debit)" }}>{error}</div>}
 
@@ -795,10 +846,12 @@ function CategoriesPage({ transactions, privacy }) {
                 No custom categories yet. Add one above.
               </div>
             )}
-            {customCats.map((name) => (
-              <div key={name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--rule)" }}>
-                <span style={{ fontSize: 14 }}>• {name}</span>
-                <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => removeCat(name)}>Remove</button>
+            {customCats.map((c) => (
+              <div key={c.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--rule)" }}>
+                <span style={{ fontSize: 14, display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>{c.glyph || "•"}</span> {c.name}
+                </span>
+                <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => removeCat(c.name)}>Remove</button>
               </div>
             ))}
           </div>
