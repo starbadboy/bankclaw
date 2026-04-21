@@ -25,9 +25,8 @@ ENV PATH="/root/.local/bin/:/root/.cargo/bin:$PATH" \
 WORKDIR /app
 
 # Dependency install — copy manifests first for better layer caching
-# uv.lock is gitignored, so resolve at build time
-COPY pyproject.toml README.md ./
-RUN uv venv && uv sync --all-extras --no-install-project
+COPY pyproject.toml uv.lock README.md ./
+RUN uv venv && uv sync --all-extras --frozen --no-install-project
 
 # Application code
 COPY webapp/ ./webapp
