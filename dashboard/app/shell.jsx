@@ -847,14 +847,25 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
                 No custom categories yet. Add one above.
               </div>
             )}
-            {customCats.map((c) => (
-              <div key={c.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--rule)" }}>
-                <span style={{ fontSize: 14, display: "inline-flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 18 }}>{c.glyph || "•"}</span> {c.name}
-                </span>
-                <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => removeCat(c.name)}>Remove</button>
-              </div>
-            ))}
+            {customCats.map((c) => {
+              const s = spending.find((r) => r.id === c.name);
+              const pct = s ? Math.round((s.total / topSpend) * 100) : 0;
+              return (
+                <div key={c.name} className="cat-row" style={{ paddingTop: 10, paddingBottom: 10 }}>
+                  <span className="cat-glyph">{c.glyph || "•"}</span>
+                  <div style={{ flex: 1 }}>
+                    <div className="cat-name">{c.name}</div>
+                    {s && <div className="cat-bar" style={{ "--w": `${pct}%`, marginTop: 4 }}></div>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div className="cat-amt" style={{ fontSize: 13 }}>
+                      {s ? fmtSGD(-s.total, privacy).replace("−", "") : "—"}
+                    </div>
+                    <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => removeCat(c.name)}>Remove</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
