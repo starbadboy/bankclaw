@@ -1007,16 +1007,42 @@ function BanksPage({ transactions, privacy, onNav }) {
       </div>
 
       <div style={{ height: 28 }} />
-      <div className="panel panel-pad" style={{ background: "oklch(0.97 0.01 35)" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <Icon name="file" size={16} />
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>Add another bank</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>18 bank layouts supported — DBS, OCBC, UOB, Chase, SC, Maybank, HSBC, and more.</div>
+      <div className="panel">
+        <div className="panel-hd">
+          <h3>Supported banks</h3>
+          <div className="tools" style={{ fontSize: 12, color: "var(--ink-3)" }}>
+            <span>{SUPPORTED_BANKS.length} layouts</span>
           </div>
-          <button className="btn primary" style={{ marginLeft: "auto", flexShrink: 0 }} onClick={() => onNav("import")}>
-            <Icon name="plus" size={13} /> Import PDF
-          </button>
+        </div>
+        <div className="panel-pad" style={{ paddingTop: 4 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 8 }}>
+            {SUPPORTED_BANKS.map((b) => (
+              <div
+                key={b.name}
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "10px 12px", border: "1px solid var(--rule)", borderRadius: 4,
+                  background: "var(--paper)",
+                }}
+              >
+                <div style={{ fontSize: 13 }}>{b.name}</div>
+                <div style={{ display: "flex", gap: 6, fontSize: 11, color: "var(--ink-3)" }}>
+                  <span title="Credit card statement" style={{ opacity: b.credit ? 1 : 0.3 }}>
+                    💳
+                  </span>
+                  <span title="Debit / account statement" style={{ opacity: b.debit ? 1 : 0.3 }}>
+                    🏦
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 14, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "var(--ink-4)" }}>
+            <span>💳 credit statement · 🏦 debit statement · faded = not supported</span>
+            <button className="btn primary" onClick={() => onNav("import")}>
+              <Icon name="plus" size={13} /> Import PDF
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -12,6 +12,30 @@ const BANKS = [
   { id: "other",   name: "Other",                short: "OTH",  color: "#888888", tone: "#555555" },
 ];
 
+// Full list of statement layouts supported by monopoly-core (kept in sync
+// with webapp/constants.py SUPPORTED_BANKS). Credit/debit flags indicate
+// whether that statement type can be parsed.
+const SUPPORTED_BANKS = [
+  { name: "Bank of America",                    credit: true,  debit: true  },
+  { name: "Bank of Montreal (BMO)",             credit: true,  debit: true  },
+  { name: "Canadian Imperial Bank of Commerce", credit: true,  debit: true  },
+  { name: "Canadian Tire Bank",                 credit: true,  debit: false },
+  { name: "Capital One Canada",                 credit: true,  debit: false },
+  { name: "Chase",                              credit: true,  debit: false },
+  { name: "Citibank",                           credit: true,  debit: false },
+  { name: "DBS / POSB",                         credit: true,  debit: true  },
+  { name: "HSBC",                               credit: true,  debit: false },
+  { name: "Maybank",                            credit: true,  debit: true  },
+  { name: "OCBC",                               credit: true,  debit: true  },
+  { name: "Royal Bank of Canada (RBC)",         credit: true,  debit: true  },
+  { name: "Scotiabank",                         credit: true,  debit: true  },
+  { name: "Standard Chartered",                 credit: true,  debit: false },
+  { name: "TD Canada Trust",                    credit: true,  debit: true  },
+  { name: "Trust",                              credit: true,  debit: false },
+  { name: "UOB",                                credit: true,  debit: true  },
+  { name: "Zürcher Kantonalbank",               credit: false, debit: true  },
+];
+
 const CATEGORIES = [
   { id: "food",          name: "Food & Dining",  glyph: "🍽" },
   { id: "transport",     name: "Transport",       glyph: "🚕" },
@@ -96,7 +120,7 @@ function relDateGroup(iso) {
 }
 
 Object.assign(window, {
-  BANKS, CATEGORIES, TRANSACTIONS,
+  BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow,
   fmtSGD, fmtDate, relDateGroup,
 });
