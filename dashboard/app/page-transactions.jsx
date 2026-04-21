@@ -128,7 +128,7 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
               </div>
               <div className="ledger">
                 {items.map((t) => {
-                  const cat = CATEGORIES.find((c) => c.id === t.category);
+                  const cat = getCatInfo(t.category);
                   return (
                     <div key={t.id} className="row" onClick={() => onOpenTx(t)}>
                       <div className="cell mono" style={{ color: "var(--ink-3)", fontSize: 12 }}>

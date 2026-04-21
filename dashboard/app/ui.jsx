@@ -51,7 +51,7 @@ function BankBadge({ bankId, size = 14 }) {
 }
 
 function CategoryChip({ catId, active, onClick }) {
-  const c = CATEGORIES.find((x) => x.id === catId);
+  const c = getCatInfo(catId);
   if (!c) return null;
   return (
     <span className={"chip" + (active ? " active" : "")} onClick={onClick}>

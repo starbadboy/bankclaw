@@ -243,7 +243,7 @@ function InsightsPage({ transactions, privacy }) {
           </div>
           <div style={{ padding: "4px 0 8px" }}>
             {topMerchants.map((m, i) => {
-              const cat = CATEGORIES.find((c) => c.id === m.cat);
+              const cat = getCatInfo(m.cat);
               const pct = Math.round((m.total / topMerchants[0].total) * 100);
               return (
                 <div key={m.name} style={{ display: "grid", gridTemplateColumns: "28px 1fr auto", padding: "12px 20px", borderTop: "1px solid var(--rule)", alignItems: "center", gap: 12 }}>

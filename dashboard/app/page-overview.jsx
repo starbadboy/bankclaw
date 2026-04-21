@@ -37,7 +37,10 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
   const [showRangeMenu, setShowRangeMenu] = useStateOV(false);
 
   const catTxns = useMemoOV(() => filterByRange(transactions, catRange), [transactions, catRange]);
-  const recent = transactions.slice(0, 8);
+  const recent = useMemoOV(
+    () => [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 8),
+    [transactions],
+  );
   const totals = useMemoOV(() => totalsFor(transactions), [transactions]);
   const flow = useMemoOV(() => dailyFlow(transactions, 30), [transactions]);
   const byCat = useMemoOV(() => spendByCategory(catTxns).slice(0, 6), [catTxns]);
@@ -239,7 +242,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
         </div>
         <div className="ledger">
           {recent.map((t) => {
-            const cat = CATEGORIES.find((c) => c.id === t.category);
+            const cat = getCatInfo(t.category);
             return (
               <div key={t.id} className="row" onClick={() => onOpenTx(t)}>
                 <div className="cell mono" style={{ color: "var(--ink-3)", fontSize: 12 }}>

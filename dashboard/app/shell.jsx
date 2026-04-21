@@ -307,7 +307,7 @@ function Drawer({ tx, onClose, privacy, onChanged, availableCategories = [] }) {
   const [busy, setBusy] = useStateD(false);
   const [err, setErr] = useStateD("");
   const open = !!tx;
-  const cat = tx && CATEGORIES.find((c) => c.id === tx.category);
+  const cat = tx && getCatInfo(tx.category);
   const bank = tx && BANKS.find((b) => b.id === tx.bank);
 
   // Pass either a built-in id ("food") or a custom category name ("Investment")
@@ -538,6 +538,7 @@ function App() {
     try {
       const cats = await apiFetchCategories();
       setAllCategories(cats);
+      window.ALL_CATEGORIES = cats; // used by getCatInfo() to resolve custom categories
     } catch {}
   }, []);
 
@@ -690,7 +691,7 @@ function HistoryPage({ transactions, privacy, onOpenTx }) {
             </div>
             <div className="ledger">
               {visibleTxs.map((t) => {
-                const cat = CATEGORIES.find((c) => c.id === t.category);
+                const cat = getCatInfo(t.category);
                 return (
                   <div key={t.id} className="row" onClick={() => onOpenTx(t)}>
                     <div className="cell mono" style={{ color: "var(--ink-3)", fontSize: 12 }}>{fmtDate(t.date)}</div>

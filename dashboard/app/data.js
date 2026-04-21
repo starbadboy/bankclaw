@@ -47,7 +47,7 @@ function spendByCategory(txs) {
     }
   });
   return Object.entries(map)
-    .map(([id, total]) => ({ id, total, cat: CATEGORIES.find((c) => c.id === id) }))
+    .map(([id, total]) => ({ id, total, cat: (typeof getCatInfo === "function" ? getCatInfo(id) : CATEGORIES.find((c) => c.id === id)) }))
     .sort((a, b) => b.total - a.total);
 }
 

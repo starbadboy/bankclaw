@@ -239,7 +239,8 @@ let _txCounter = 0;
 function normalizeApiTransaction(t) {
   _txCounter++;
   const bankId = _BANK_MAP[t.bank] || "other";
-  const catId = _CAT_MAP[t.category] || "other";
+  // Built-in names map to the internal id; custom names keep the raw name
+  const catId = _CAT_MAP[t.category] || t.category || "other";
   // Ensure ISO date string
   const dateStr = t.date && t.date.includes("T") ? t.date : `${t.date}T00:00:00.000Z`;
   return {
@@ -254,6 +255,20 @@ function normalizeApiTransaction(t) {
   };
 }
 
+// Resolve a category id/name to display info. Works for built-ins (by id)
+// and for custom categories (by raw name) via window.ALL_CATEGORIES.
+function getCatInfo(idOrName) {
+  if (!idOrName) return { id: "other", name: "Other", glyph: "•" };
+  const cats = typeof CATEGORIES !== "undefined" ? CATEGORIES : [];
+  const byId = cats.find((c) => c.id === idOrName);
+  if (byId) return byId;
+  const all = (typeof window !== "undefined" && window.ALL_CATEGORIES) || [];
+  const byName = all.find((c) => c.name === idOrName);
+  if (byName) return { id: byName.name, name: byName.name, glyph: byName.glyph || "•" };
+  return { id: idOrName, name: idOrName, glyph: "•" };
+}
+window.getCatInfo = getCatInfo;
+
 Object.assign(window, {
   getToken, getEmail, clearSession, isLoggedIn,
   apiLogin, apiLogout, apiResetPassword, apiChangePassword,
@@ -261,5 +276,5 @@ Object.assign(window, {
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory,
   apiExportCsv,
-  normalizeApiTransaction,
+  normalizeApiTransaction, getCatInfo,
 });
