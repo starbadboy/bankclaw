@@ -26,8 +26,7 @@ WORKDIR /app
 
 # Dependency install — copy manifests first for better layer caching
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=$UV_CACHE_DIR \
-    uv venv && uv sync --all-extras --frozen --no-install-project
+RUN uv venv && uv sync --all-extras --frozen --no-install-project
 
 # Application code
 COPY webapp/ ./webapp
