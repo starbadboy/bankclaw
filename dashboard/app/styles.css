@@ -767,6 +767,16 @@ body {
   .grid-2 { grid-template-columns: 1fr; gap: 16px; }
   .grid-3 { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+
+  /* Inline 4-col stat strips → 2-col on tablet */
+  [style*="grid-template-columns: repeat(4, 1fr)"] {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  /* Inline 2fr 1fr hero→donut splits → stack on tablet */
+  [style*="grid-template-columns: 1.2fr 1fr"],
+  [style*="grid-template-columns: 2fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
 }
 
 /* Phone */
@@ -822,13 +832,76 @@ body {
   .drawer-hd { padding: 16px 18px; }
   .drawer-body { padding: 14px 18px 40px; }
 
-  /* Ledger row: stack date above description on narrow screens */
+  /* Ledger: collapse to single-column; header hidden (redundant with inline labels) */
+  .ledger { grid-template-columns: 1fr !important; }
+  .ledger-hd { display: none !important; }
   .ledger .row,
   .ledger > div[class=""] {
     grid-template-columns: 1fr !important;
     gap: 4px;
+    padding: 10px 14px !important;
   }
+  .ledger .cell { padding: 0 !important; }
   .ledger .cell.num { justify-self: flex-end; }
+  .ledger .desc { padding-left: 0 !important; }
+  .ledger .amt { font-size: 18px !important; }
+
+  /* Stat tiles (4-across strip under page titles) */
+  .stat { padding: 14px 16px; }
+  .stat .val { font-size: 26px; }
+  .stat .lab { letter-spacing: 0.18em; }
+
+  /* Transaction detail key/value */
+  .kv { grid-template-columns: 90px 1fr !important; font-size: 12.5px !important; }
+
+  /* Import processing cards */
+  .proc { grid-template-columns: 32px 1fr 60px !important; gap: 12px !important; padding: 12px 14px !important; }
+  .proc .pct { font-size: 11px !important; }
+
+  /* Topbar cramped: hide profile switcher text, keep just select */
+  .topbar select { max-width: 140px !important; font-size: 11px !important; }
+
+  /* Category rows on categories page */
+  .cat-row { grid-template-columns: 24px 1fr auto !important; gap: 10px !important; }
+  .cat-row .cat-name { font-size: 13px; }
+  .cat-row .cat-amt { font-size: 12px !important; }
+
+  /* Panel headers that are tight on mobile */
+  .panel-hd .tools { flex-wrap: wrap; gap: 8px !important; font-size: 10px !important; }
+
+  /* Collapse common inline grids (overview stat strip, insights, coach, etc.) */
+  [style*="grid-template-columns: repeat(2, 1fr)"],
+  [style*="grid-template-columns: repeat(3, 1fr)"],
+  [style*="grid-template-columns: repeat(4, 1fr)"],
+  [style*="grid-template-columns: 1.2fr 1fr"],
+  [style*="grid-template-columns: 2fr 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Two-column compact rows (date | amount, merchant | amount etc.) keep side-by-side */
+  [style*="grid-template-columns: 1fr auto"],
+  [style*="grid-template-columns: auto 1fr auto"] {
+    gap: 10px !important;
+  }
+
+  /* Insights: donut side-by-side (200px 1fr) → stack */
+  [style*="grid-template-columns: 200px 1fr"] {
+    grid-template-columns: 1fr !important;
+    justify-items: center;
+  }
+
+  /* Emoji palette: too wide with 10 columns */
+  [style*="grid-template-columns: repeat(10, 1fr)"] {
+    grid-template-columns: repeat(6, 1fr) !important;
+  }
+
+  /* Supported banks grid: keep minmax but smaller min */
+  [style*="repeat(auto-fill, minmax(220px"] {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)) !important;
+  }
+
+  /* Transactions page tool row (Export / Add transaction) wraps */
+  .page > div[style*="justify-content: space-between"] { flex-wrap: wrap; gap: 10px; }
 
   /* Filter bar wraps neatly */
   .filterbar { gap: 6px !important; }
