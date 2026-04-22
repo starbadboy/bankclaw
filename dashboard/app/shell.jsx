@@ -547,6 +547,7 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobil
   const meta = [
     { id: "history", label: "History", icon: "clock" },
     { id: "categories", label: "Categories", icon: "sparkle" },
+    { id: "profiles", label: "Profiles", icon: "home" },
     { id: "banks", label: "Connected banks", icon: "file" },
   ];
   const handleNav = (id) => { onNav(id); if (onMobileClose) onMobileClose(); };
@@ -611,7 +612,7 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobil
   );
 }
 
-function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav, onOpenMobileMenu }) {
+function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav, onOpenMobileMenu, profiles = [], currentProfileId, onChangeProfile }) {
   const crumbs = {
     overview: ["Workspace", "Overview"],
     transactions: ["Workspace", "Transactions"],
@@ -619,6 +620,7 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
     import: ["Workspace", "Import"],
     history: ["Library", "History"],
     categories: ["Library", "Categories"],
+    profiles: ["Library", "Profiles"],
     banks: ["Library", "Connected banks"],
   }[page] || ["Workspace", page];
   return (
@@ -627,6 +629,27 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
         <Icon name="menu" size={16} />
       </button>
       <div className="crumbs">{crumbs[0]} · <b>{crumbs[1]}</b></div>
+
+      {profiles.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 16 }}>
+          <select
+            value={currentProfileId}
+            onChange={(e) => onChangeProfile && onChangeProfile(e.target.value)}
+            title="Active profile"
+            style={{
+              padding: "6px 10px", border: "1px solid var(--rule)", borderRadius: 999,
+              background: "var(--paper-2)", color: "var(--ink-1)", fontSize: 12,
+              cursor: "pointer", maxWidth: 180,
+            }}
+          >
+            <option value="all">All profiles</option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="spacer"></div>
       <div className="search">
         <Icon name="search" size={14} />
@@ -851,6 +874,9 @@ function App() {
   const [transactions, setTransactions] = useStateApp([]);
   const [txLoading, setTxLoading] = useStateApp(false);
   const [allCategories, setAllCategories] = useStateApp([]); // [{ id?, name, glyph }] built-ins + custom
+  const [profiles, setProfiles] = useStateApp([]);            // family/sub-accounts
+  const [currentProfileId, setCurrentProfileId] = useStateApp(() => localStorage.getItem("bc_profile") || "all");
+  useEffectApp(() => { localStorage.setItem("bc_profile", currentProfileId); }, [currentProfileId]);
 
   const [tweaks, setTweaks] = useStateApp(() => {
     try { const s = JSON.parse(localStorage.getItem("bc_tweaks") || "null"); if (s) return { ...TWEAK_DEFAULTS, ...s }; } catch {}
@@ -871,13 +897,13 @@ function App() {
   const loadTransactions = useCallbackApp(async () => {
     setTxLoading(true);
     try {
-      const txs = await apiFetchTransactions();
+      const txs = await apiFetchTransactions({ profile_id: currentProfileId });
       setTransactions(txs);
       // keep global TRANSACTIONS in sync for any legacy helpers that read window.TRANSACTIONS
       window.TRANSACTIONS = txs;
     } catch {}
     setTxLoading(false);
-  }, []);
+  }, [currentProfileId]);
 
   const loadCategories = useCallbackApp(async () => {
     try {
@@ -887,10 +913,23 @@ function App() {
     } catch {}
   }, []);
 
-  // Load transactions + categories on first authed render
+  const loadProfiles = useCallbackApp(async () => {
+    try {
+      const ps = await apiFetchProfiles();
+      setProfiles(ps);
+      window.ALL_PROFILES = ps;
+    } catch {}
+  }, []);
+
+  // Load transactions + categories + profiles on first authed render
   useEffectApp(() => {
-    if (authed) { loadTransactions(); loadCategories(); }
+    if (authed) { loadTransactions(); loadCategories(); loadProfiles(); }
   }, [authed]);
+
+  // Reload transactions whenever the selected profile changes
+  useEffectApp(() => {
+    if (authed) loadTransactions();
+  }, [currentProfileId]);
 
   // Listen for 401 logout events from api.js
   useEffectApp(() => {
@@ -955,14 +994,18 @@ function App() {
         <Topbar page={page} query={query} setQuery={setQuery}
           privacy={tweaks.privacy}
           setPrivacy={(v) => { const t = { ...tweaks, privacy: v }; setTweaks(t); saveTweaks(t); }}
-          onOpenTweaks={() => setTweaksOpen(true)} onNav={navigate} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
+          onOpenTweaks={() => setTweaksOpen(true)} onNav={navigate} onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          profiles={profiles} currentProfileId={currentProfileId}
+          onChangeProfile={(id) => setCurrentProfileId(id)}
+        />
 
         {page === "overview" && <OverviewPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} onOpenTx={setOpenTx} />}
-        {page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} availableCategories={allCategories} onTxChanged={loadTransactions} />}
+        {page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} availableCategories={allCategories} onTxChanged={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
         {page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
-        {page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} />}
+        {page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
         {page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
         {page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} availableCategories={allCategories} reloadCategories={loadCategories} />}
+        {page === "profiles" && <ProfilesPage profiles={profiles} reloadProfiles={loadProfiles} />}
         {page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
       </main>
 
@@ -1299,6 +1342,166 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
   );
 }
 
+// ── Profiles page (family / sub-accounts) ──────────────────────────────────
+
+const _PROFILE_COLORS = [
+  "#1f2937", "#b8602e", "#355e3b", "#6b4a83", "#a84a3b",
+  "#2b6da3", "#c99b2d", "#4a6f61", "#8c3a5a", "#2f4c6b",
+];
+
+function ProfilesPage({ profiles = [], reloadProfiles }) {
+  const { useState: useStatePR } = React;
+  const [name, setName] = useStatePR("");
+  const [color, setColor] = useStatePR(_PROFILE_COLORS[1]);
+  const [saving, setSaving] = useStatePR(false);
+  const [err, setErr] = useStatePR("");
+  const [editing, setEditing] = useStatePR(null); // { id, draftName, draftColor }
+
+  const add = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true); setErr("");
+    try {
+      await apiCreateProfile(name.trim(), color);
+      setName(""); setColor(_PROFILE_COLORS[1]);
+      if (reloadProfiles) await reloadProfiles();
+    } catch (e2) {
+      setErr(e2.message || "Failed to add");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const save = async () => {
+    if (!editing) return;
+    setSaving(true); setErr("");
+    try {
+      await apiUpdateProfile(editing.id, { name: editing.draftName.trim(), color: editing.draftColor });
+      setEditing(null);
+      if (reloadProfiles) await reloadProfiles();
+    } catch (e2) {
+      setErr(e2.message || "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (p) => {
+    if (p.is_main) return;
+    if (!window.confirm(`Delete profile "${p.name}"? Its transactions will move to Main.`)) return;
+    try {
+      await apiDeleteProfile(p.id);
+      if (reloadProfiles) await reloadProfiles();
+    } catch (e2) {
+      setErr(e2.message || "Failed to delete");
+    }
+  };
+
+  const inputStyle = {
+    padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4,
+    background: "var(--paper)", color: "var(--ink-1)", fontSize: 13,
+  };
+
+  return (
+    <div className="page">
+      <div className="page-kicker">Library</div>
+      <h1 className="page-title"><i>Profiles.</i></h1>
+      <div className="page-sub">
+        Create sub-accounts for different family members. Imports and manual transactions
+        stay separate per profile, but categories and insights can be combined with the
+        <b> All profiles</b> switcher in the top bar.
+      </div>
+      <div style={{ height: 28 }} />
+
+      <div className="panel" style={{ maxWidth: 680 }}>
+        <div className="panel-hd">
+          <h3>Add a profile</h3>
+        </div>
+        <div className="panel-pad">
+          <form onSubmit={add} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Partner, Kids, Side business"
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <div style={{ display: "flex", gap: 4 }}>
+              {_PROFILE_COLORS.map((c) => (
+                <button key={c} type="button" onClick={() => setColor(c)} title={c}
+                  style={{
+                    width: 22, height: 22, borderRadius: "50%", background: c,
+                    border: c === color ? "2px solid var(--ink-1)" : "1px solid var(--rule)",
+                    cursor: "pointer", padding: 0,
+                  }}
+                />
+              ))}
+            </div>
+            <button className="btn primary" type="submit" disabled={saving || !name.trim()}>Add</button>
+          </form>
+          {err && <div style={{ marginTop: 10, fontSize: 12, color: "var(--debit)" }}>{err}</div>}
+        </div>
+      </div>
+
+      <div style={{ height: 20 }} />
+
+      <div className="panel" style={{ maxWidth: 680 }}>
+        <div className="panel-hd"><h3>Your profiles</h3></div>
+        <div className="panel-pad" style={{ paddingTop: 4 }}>
+          {profiles.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--ink-4)", padding: "16px 0", textAlign: "center" }}>
+              Loading…
+            </div>
+          )}
+          {profiles.map((p) => {
+            const isEditing = editing && editing.id === p.id;
+            if (isEditing) {
+              return (
+                <div key={p.id} style={{ padding: "10px 0", borderBottom: "1px solid var(--rule)", display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    value={editing.draftName}
+                    onChange={(ev) => setEditing((e) => ({ ...e, draftName: ev.target.value }))}
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {_PROFILE_COLORS.map((c) => (
+                      <button key={c} type="button" onClick={() => setEditing((e) => ({ ...e, draftColor: c }))} title={c}
+                        style={{
+                          width: 22, height: 22, borderRadius: "50%", background: c,
+                          border: c === editing.draftColor ? "2px solid var(--ink-1)" : "1px solid var(--rule)",
+                          cursor: "pointer", padding: 0,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <button className="btn primary" disabled={saving} onClick={save}>Save</button>
+                  <button className="btn ghost" disabled={saving} onClick={() => setEditing(null)}>Cancel</button>
+                </div>
+              );
+            }
+            return (
+              <div key={p.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--rule)", display: "flex", gap: 12, alignItems: "center" }}>
+                <span style={{ width: 14, height: 14, borderRadius: "50%", background: p.color || "#1f2937", display: "inline-block", flexShrink: 0 }} />
+                <div style={{ flex: 1, fontSize: 14 }}>
+                  {p.name} {p.is_main && <span style={{ fontSize: 10, letterSpacing: "0.18em", color: "var(--ink-4)", textTransform: "uppercase", marginLeft: 6 }}>Main</span>}
+                </div>
+                <button className="btn ghost" style={{ fontSize: 12 }}
+                  onClick={() => setEditing({ id: p.id, draftName: p.name, draftColor: p.color || _PROFILE_COLORS[0] })}
+                >
+                  Edit
+                </button>
+                {!p.is_main && (
+                  <button className="btn ghost" style={{ fontSize: 12, color: "var(--debit)" }} onClick={() => remove(p)}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Connected banks page ─────────────────────────────────────────────────────
 
 function BanksPage({ transactions, privacy, onNav }) {
@@ -1405,4 +1608,4 @@ function BanksPage({ transactions, privacy, onNav }) {
   );
 }
 
-Object.assign(window, { App, LoginPage, LandingPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, BanksPage });
+Object.assign(window, { App, LoginPage, LandingPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, ProfilesPage, BanksPage });

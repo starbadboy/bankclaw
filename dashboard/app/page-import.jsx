@@ -1,7 +1,7 @@
 // Import page — drag → detect → extract → categorize → save (real API)
 const { useState: useStateIM, useEffect: useEffectIM, useRef: useRefIM } = React;
 
-function ImportPage({ privacy, onNav, onImportDone }) {
+function ImportPage({ privacy, onNav, onImportDone, profiles = [], currentProfileId = "all" }) {
   const [drag, setDrag] = useStateIM(false);
   const [stage, setStage] = useStateIM("drop"); // drop | processing | done | error
   const [files, setFiles] = useStateIM([]);
@@ -10,6 +10,11 @@ function ImportPage({ privacy, onNav, onImportDone }) {
   const [errorMsg, setErrorMsg] = useStateIM("");
   const [catPct, setCatPct] = useStateIM(0);
   const fileInputRef = useRefIM(null);
+  const defaultProfile = currentProfileId !== "all" && profiles.some((p) => p.id === currentProfileId)
+    ? currentProfileId
+    : (profiles.find((p) => p.is_main)?.id || profiles[0]?.id || "");
+  const [profileId, setProfileId] = useStateIM(defaultProfile);
+  useEffectIM(() => { if (!profileId && defaultProfile) setProfileId(defaultProfile); }, [defaultProfile]);
 
   const processFiles = async (fileList) => {
     const arr = Array.from(fileList).filter((f) => f.name.endsWith(".pdf"));
@@ -33,7 +38,7 @@ function ImportPage({ privacy, onNav, onImportDone }) {
     });
 
     try {
-      const data = await apiImport(arr, { categorize: true });
+      const data = await apiImport(arr, { categorize: true, profile_id: profileId || undefined });
 
       // Flush all to 100%
       intervals.forEach(clearInterval);
@@ -74,6 +79,21 @@ function ImportPage({ privacy, onNav, onImportDone }) {
       </div>
 
       <div style={{ height: 28 }} />
+
+      {stage === "drop" && profiles.length > 1 && (
+        <div className="panel panel-pad" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 14, background: "var(--paper-2)" }}>
+          <div className="tag" style={{ margin: 0 }}>Import into</div>
+          <select value={profileId} onChange={(e) => setProfileId(e.target.value)}
+            style={{ padding: "8px 10px", border: "1px solid var(--rule)", borderRadius: 4, background: "var(--paper)", color: "var(--ink-1)", fontSize: 13, minWidth: 200 }}>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>{p.name}{p.is_main ? " (main)" : ""}</option>
+            ))}
+          </select>
+          <span style={{ fontSize: 11, color: "var(--ink-4)" }}>
+            Statements will be saved under this profile.
+          </span>
+        </div>
+      )}
 
       {stage === "drop" && (
         <>

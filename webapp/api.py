@@ -35,6 +35,13 @@ try:
         save_transactions,
         update_transaction_category,
     )
+    from webapp.profile_repository import (
+        create_profile,
+        delete_profile,
+        ensure_main_profile,
+        list_profiles,
+        update_profile,
+    )
     _MONGO = True
 except Exception:  # noqa: BLE001
     _MONGO = False
@@ -202,6 +209,7 @@ async def change_password(request: Request, user: str = Depends(_current_user)) 
 async def get_transactions(
     start: str | None = None,
     end: str | None = None,
+    profile_id: str | None = None,
     user: str = Depends(_current_user),
 ) -> dict:
     if not _MONGO:
@@ -209,8 +217,13 @@ async def get_transactions(
     from datetime import datetime, timezone  # noqa: PLC0415
     start_date = start or "2000-01-01"
     end_date = end or datetime.now(tz=timezone.utc).date().isoformat()
+    main = ensure_main_profile(user)
+    filter_profile = None if (not profile_id or profile_id == "all") else profile_id
     try:
-        df = get_transactions_by_date_range(start_date, end_date, user)
+        df = get_transactions_by_date_range(
+            start_date, end_date, user,
+            profile_id=filter_profile, main_profile_id=main["id"],
+        )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
     if df.empty:
@@ -241,7 +254,10 @@ async def create_transaction(request: Request, user: str = Depends(_current_user
     }
     if not row["description"]:
         raise HTTPException(status_code=400, detail="Description cannot be blank")
-    saved = save_transactions(pd.DataFrame([row]), user)
+
+    profile_id = body.get("profile_id") or ensure_main_profile(user)["id"]
+    saved = save_transactions(pd.DataFrame([row]), user, profile_id=profile_id)
+    row["profile_id"] = profile_id
     return {"saved": saved, "transaction": row}
 
 
@@ -322,6 +338,50 @@ async def rename_category(name: str, request: Request, user: str = Depends(_curr
 
 
 # ---------------------------------------------------------------------------
+# Profiles (family / sub-accounts)
+# ---------------------------------------------------------------------------
+@app.get("/api/profiles")
+async def get_profiles(user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        return {"profiles": [{"id": "main", "name": "Main", "color": "#1f2937", "is_main": True}]}
+    return {"profiles": list_profiles(user)}
+
+
+@app.post("/api/profiles")
+async def add_profile(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        profile = create_profile(user, body.get("name", ""), body.get("color"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"profile": profile}
+
+
+@app.patch("/api/profiles/{profile_id}")
+async def patch_profile(profile_id: str, request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        profile = update_profile(user, profile_id, name=body.get("name"), color=body.get("color"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"profile": profile}
+
+
+@app.delete("/api/profiles/{profile_id}")
+async def remove_profile(profile_id: str, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        return delete_profile(user, profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
 # Import
 # ---------------------------------------------------------------------------
 @app.post("/api/import")
@@ -329,6 +389,7 @@ async def import_statements(
     files: list[UploadFile] = File(...),
     password: str | None = Form(default=None),
     categorize: str = Form(default="true"),
+    profile_id: str | None = Form(default=None),
     user: str = Depends(_current_user),
 ) -> dict:
     from monopoly.pdf import MissingPasswordError, PdfDocument  # noqa: PLC0415
@@ -399,12 +460,16 @@ async def import_statements(
         combined["category"] = "Other"
 
     saved = 0
+    effective_profile_id = profile_id or (ensure_main_profile(user)["id"] if _MONGO else None)
     if _MONGO:
         try:
-            saved = save_transactions(combined, user_email=user)
+            saved = save_transactions(combined, user_email=user, profile_id=effective_profile_id)
             save_category_memory(combined, user_email=user, source="auto")
         except Exception:  # noqa: BLE001
             pass  # return extracted transactions even if DB save fails
+
+    if effective_profile_id:
+        combined["profile_id"] = effective_profile_id
 
     return {
         "results": results,

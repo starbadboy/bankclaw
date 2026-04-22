@@ -104,10 +104,11 @@ async function apiChangePassword(currentPassword, newPassword) {
 
 // ── Transactions ──────────────────────────────────────────────────────────
 
-async function apiFetchTransactions({ start, end } = {}) {
+async function apiFetchTransactions({ start, end, profile_id } = {}) {
   const params = new URLSearchParams();
   if (start) params.set("start", start);
   if (end) params.set("end", end);
+  if (profile_id) params.set("profile_id", profile_id);
   const qs = params.toString();
   const res = await _fetch(`/api/transactions${qs ? "?" + qs : ""}`);
   if (!res.ok) return [];
@@ -115,10 +116,10 @@ async function apiFetchTransactions({ start, end } = {}) {
   return (data.transactions || []).map(normalizeApiTransaction);
 }
 
-async function apiCreateTransaction({ date, description, amount, bank, category }) {
+async function apiCreateTransaction({ date, description, amount, bank, category, profile_id }) {
   const res = await _fetch("/api/transactions", {
     method: "POST",
-    body: JSON.stringify({ date, description, amount, bank, category }),
+    body: JSON.stringify({ date, description, amount, bank, category, profile_id }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -167,11 +168,12 @@ async function apiUpdateCategory(tx, newCategoryIdOrName) {
 
 // ── Import ────────────────────────────────────────────────────────────────
 
-async function apiImport(files, { password = null, categorize = true } = {}) {
+async function apiImport(files, { password = null, categorize = true, profile_id = null } = {}) {
   const form = new FormData();
   for (const f of files) form.append("files", f);
   if (password) form.append("password", password);
   form.append("categorize", String(categorize));
+  if (profile_id) form.append("profile_id", profile_id);
   const token = getToken();
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
   const res = await fetch("/api/import", { method: "POST", body: form, headers });
@@ -299,8 +301,42 @@ function normalizeApiTransaction(t) {
     bank: bankId,
     category: catId,
     reference: t.reference || `REF${String(_txCounter).padStart(6, "0")}`,
+    profile_id: t.profile_id || null,
     _raw: t,  // keep original for delete/recategorize
   };
+}
+
+// ── Profiles ─────────────────────────────────────────────────────────────
+
+async function apiFetchProfiles() {
+  const res = await _fetch("/api/profiles");
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.profiles || [];
+}
+
+async function apiCreateProfile(name, color) {
+  const res = await _fetch("/api/profiles", {
+    method: "POST",
+    body: JSON.stringify({ name, color }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
+  return res.json();
+}
+
+async function apiUpdateProfile(id, { name, color } = {}) {
+  const res = await _fetch(`/api/profiles/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name, color }),
+  });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
+  return res.json();
+}
+
+async function apiDeleteProfile(id) {
+  const res = await _fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
+  return res.json();
 }
 
 // Resolve a category id/name to display info. Works for built-ins (by id)
@@ -323,6 +359,7 @@ Object.assign(window, {
   apiFetchTransactions, apiCreateTransaction, apiDeleteTransactions, apiUpdateCategory,
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,
+  apiFetchProfiles, apiCreateProfile, apiUpdateProfile, apiDeleteProfile,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,
 });

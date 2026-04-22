@@ -1,7 +1,7 @@
 // Transactions page — full filterable ledger
 const { useState: useStateTX, useMemo: useMemoTX } = React;
 
-function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank, initialCategory, availableCategories = [], onTxChanged }) {
+function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank, initialCategory, availableCategories = [], onTxChanged, profiles = [], currentProfileId = "all" }) {
   const [addOpen, setAddOpen] = useStateTX(false);
   const [activeCats, setActiveCats] = useStateTX(initialCategory ? [initialCategory] : []);
   const [activeBanks, setActiveBanks] = useStateTX(initialBank ? [initialBank] : []);
@@ -172,20 +172,26 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
           onClose={() => setAddOpen(false)}
           availableCategories={availableCategories}
           onSaved={onTxChanged}
+          profiles={profiles}
+          currentProfileId={currentProfileId}
         />
       )}
     </div>
   );
 }
 
-function AddTransactionModal({ onClose, availableCategories = [], onSaved }) {
+function AddTransactionModal({ onClose, availableCategories = [], onSaved, profiles = [], currentProfileId = "all" }) {
   const today = new Date().toISOString().slice(0, 10);
+  const defaultProfile = currentProfileId !== "all" && profiles.some((p) => p.id === currentProfileId)
+    ? currentProfileId
+    : (profiles.find((p) => p.is_main)?.id || profiles[0]?.id || "");
   const [date, setDate] = useStateTX(today);
   const [description, setDescription] = useStateTX("");
   const [amount, setAmount] = useStateTX("");
   const [direction, setDirection] = useStateTX("out"); // out = expense, in = income
   const [bank, setBank] = useStateTX("OCBC");
   const [categoryName, setCategoryName] = useStateTX("Other");
+  const [profileId, setProfileId] = useStateTX(defaultProfile);
   const [busy, setBusy] = useStateTX(false);
   const [err, setErr] = useStateTX("");
 
@@ -207,6 +213,7 @@ function AddTransactionModal({ onClose, availableCategories = [], onSaved }) {
       await apiCreateTransaction({
         date, description: description.trim(), amount: signedAmount,
         bank, category: categoryName,
+        profile_id: profileId || undefined,
       });
       if (onSaved) await onSaved();
       onClose();
@@ -274,6 +281,17 @@ function AddTransactionModal({ onClose, availableCategories = [], onSaved }) {
               </select>
             </div>
           </div>
+
+          {profiles.length > 1 && (
+            <div style={{ marginBottom: 14 }}>
+              <div className="tag" style={{ marginBottom: 6 }}>Profile</div>
+              <select value={profileId} onChange={(e) => setProfileId(e.target.value)} style={inputStyle}>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}{p.is_main ? " (main)" : ""}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {err && (
             <div style={{ marginBottom: 12, padding: "8px 10px", background: "var(--paper-2)", color: "var(--debit)", fontSize: 12, borderRadius: 4 }}>

@@ -10,7 +10,7 @@ _COLLECTION = "transactions"
 _CATEGORY_MEMORY_COLLECTION = "category_memory"
 _CUSTOM_CATEGORY_COLLECTION = "custom_categories"
 
-_EMPTY_COLUMNS = ["user_email", "date", "description", "amount", "bank", "category", "saved_at"]
+_EMPTY_COLUMNS = ["user_email", "date", "description", "amount", "bank", "category", "saved_at", "profile_id"]
 _MEMORY_EMPTY_COLUMNS = [
     "user_email",
     "normalized_description",
@@ -39,7 +39,12 @@ def _normalize_category_name(name: str) -> str:
     return " ".join(name.split()).casefold()
 
 
-def save_transactions(df: pd.DataFrame, user_email: str, batch_size: int = 200) -> int:
+def save_transactions(
+    df: pd.DataFrame,
+    user_email: str,
+    batch_size: int = 200,
+    profile_id: str | None = None,
+) -> int:
     if batch_size <= 0:
         raise ValueError("batch_size must be greater than 0")
 
@@ -69,13 +74,14 @@ def save_transactions(df: pd.DataFrame, user_email: str, batch_size: int = 200) 
             "amount": float(row["amount"]),
             "bank": str(row["bank"]),
         }
-        update_doc = {
-            "$set": {
-                **filter_doc,
-                "category": str(row.get("category", "Other")),
-                "saved_at": datetime.now(tz=timezone.utc).isoformat(),
-            }
+        set_doc = {
+            **filter_doc,
+            "category": str(row.get("category", "Other")),
+            "saved_at": datetime.now(tz=timezone.utc).isoformat(),
         }
+        if profile_id:
+            set_doc["profile_id"] = profile_id
+        update_doc = {"$set": set_doc}
         operations.append(UpdateOne(filter_doc, update_doc, upsert=True))
 
         if len(operations) >= batch_size:
@@ -271,17 +277,36 @@ def archive_custom_category(name: str, user_email: str) -> int:
     return result.modified_count
 
 
-def get_transactions_by_date_range(start_date: str, end_date: str, user_email: str) -> pd.DataFrame:
+def get_transactions_by_date_range(
+    start_date: str,
+    end_date: str,
+    user_email: str,
+    profile_id: str | None = None,
+    main_profile_id: str | None = None,
+) -> pd.DataFrame:
+    """Fetch transactions. When ``profile_id`` is provided, filter to that
+    profile — for the main profile, also include rows missing ``profile_id``
+    so pre-migration transactions show up."""
     db = get_db()
     collection = db[_COLLECTION]
 
-    cursor = collection.find(
-        {"user_email": user_email, "date": {"$gte": start_date, "$lte": end_date}},
-        {"_id": 0},
-        sort=[("date", ASCENDING)],
-    )
+    query: dict = {
+        "user_email": user_email,
+        "date": {"$gte": start_date, "$lte": end_date},
+    }
+    if profile_id:
+        if main_profile_id and profile_id == main_profile_id:
+            query["$or"] = [
+                {"profile_id": profile_id},
+                {"profile_id": {"$exists": False}},
+                {"profile_id": None},
+            ]
+        else:
+            query["profile_id"] = profile_id
+
+    cursor = collection.find(query, {"_id": 0}, sort=[("date", ASCENDING)])
     records = list(cursor)
-    
+
     if not records:
         return pd.DataFrame(columns=_EMPTY_COLUMNS)
 
