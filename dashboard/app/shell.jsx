@@ -543,6 +543,7 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobil
     { id: "transactions", label: "Transactions", icon: "list" },
     { id: "insights", label: "Insights", icon: "pie" },
     { id: "import", label: "Import", icon: "upload" },
+    { id: "coach", label: "AI Coach", icon: "sparkle" },
   ];
   const meta = [
     { id: "history", label: "History", icon: "clock" },
@@ -618,6 +619,7 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
     transactions: ["Workspace", "Transactions"],
     insights: ["Workspace", "Insights"],
     import: ["Workspace", "Import"],
+    coach: ["Workspace", "AI Coach"],
     history: ["Library", "History"],
     categories: ["Library", "Categories"],
     profiles: ["Library", "Profiles"],
@@ -1003,6 +1005,7 @@ function App() {
         {page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} availableCategories={allCategories} onTxChanged={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
         {page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
         {page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
+        {page === "coach" && <CoachPage currentProfileId={currentProfileId} profiles={profiles} />}
         {page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
         {page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} availableCategories={allCategories} reloadCategories={loadCategories} />}
         {page === "profiles" && <ProfilesPage profiles={profiles} reloadProfiles={loadProfiles} />}
@@ -1342,6 +1345,188 @@ function CategoriesPage({ transactions, privacy, availableCategories = [], reloa
   );
 }
 
+// ── AI Coach page ──────────────────────────────────────────────────────────
+
+function CoachPage({ currentProfileId = "all", profiles = [] }) {
+  const { useState: useStateCO, useEffect: useEffectCO } = React;
+  const [range, setRange] = useStateCO(90);
+  const [loading, setLoading] = useStateCO(false);
+  const [err, setErr] = useStateCO("");
+  const [data, setData] = useStateCO(null); // { review, generated_at, from_cache }
+
+  // Load cached review on mount / whenever profile or range changes
+  useEffectCO(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true); setErr("");
+      try {
+        const res = await apiAiReview({ range_days: range, profile_id: currentProfileId });
+        if (!cancelled) setData(res);
+      } catch (e) {
+        if (!cancelled) setErr(e.message || "Failed");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [range, currentProfileId]);
+
+  const refresh = async () => {
+    setLoading(true); setErr("");
+    try {
+      const res = await apiAiReview({ range_days: range, profile_id: currentProfileId, force_refresh: true });
+      setData(res);
+    } catch (e) {
+      setErr(e.message || "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const review = data?.review;
+  const generatedAt = data?.generated_at ? new Date(data.generated_at) : null;
+  const fromCache = !!data?.from_cache;
+  const activeProfile = profiles.find((p) => p.id === currentProfileId);
+
+  const severityColor = (sev) => sev === "high" ? "var(--debit)" : sev === "medium" ? "var(--warn)" : "var(--ink-3)";
+
+  return (
+    <div className="page">
+      <div className="page-kicker">Workspace</div>
+      <h1 className="page-title"><i>AI Coach.</i></h1>
+      <div className="page-sub">
+        Aggregated review of your last <b>{range}</b> days
+        {activeProfile ? <> for <b>{activeProfile.name}</b></> : currentProfileId === "all" && <> across <b>all profiles</b></>}.
+        Only aggregates (totals, merchants, categories) are sent to the model — never raw statements.
+      </div>
+
+      <div style={{ height: 20 }} />
+
+      {/* Controls */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
+        <div className="seg" style={{ display: "flex" }}>
+          {[30, 90, 180, 365].map((d) => (
+            <button key={d} className={range === d ? "on" : ""} onClick={() => setRange(d)}>{d}d</button>
+          ))}
+        </div>
+        <button className="btn" disabled={loading} onClick={refresh}>
+          <Icon name="sparkle" size={13} /> {loading ? "Analysing…" : "Refresh review"}
+        </button>
+        {generatedAt && !loading && (
+          <div style={{ fontSize: 11, color: "var(--ink-4)" }}>
+            {fromCache ? "Cached · " : ""}Generated {generatedAt.toLocaleString()}
+          </div>
+        )}
+      </div>
+
+      {err && (
+        <div className="panel panel-pad" style={{ marginBottom: 20, color: "var(--debit)", fontSize: 13 }}>
+          {err.includes("DEEPSEEK_API_KEY") ? (
+            <>
+              <b>DeepSeek API key not configured.</b><br />
+              Set <code>DEEPSEEK_API_KEY</code> in Railway Variables to enable AI Coach.
+            </>
+          ) : err}
+        </div>
+      )}
+
+      {loading && !review && (
+        <div className="panel panel-pad" style={{ textAlign: "center", padding: "60px 32px", color: "var(--ink-3)" }}>
+          Crunching your transactions…
+        </div>
+      )}
+
+      {review && (
+        <div style={{ display: "grid", gap: 16 }}>
+          {/* Summary */}
+          {review.summary && (
+            <div className="panel panel-pad">
+              <div className="tag" style={{ marginBottom: 8 }}>◆ Summary</div>
+              <div style={{ fontSize: 16, lineHeight: 1.55, color: "var(--ink-1)", fontFamily: "Instrument Serif, Georgia, serif" }}>
+                {review.summary}
+              </div>
+            </div>
+          )}
+
+          {/* Opportunities */}
+          {Array.isArray(review.opportunities) && review.opportunities.length > 0 && (
+            <div className="panel">
+              <div className="panel-hd"><h3>Opportunities</h3><div className="tools"><span className="hint">Things to try</span></div></div>
+              <div style={{ padding: "4px 0 8px" }}>
+                {review.opportunities.map((op, i) => (
+                  <div key={i} style={{ padding: "14px 24px", borderTop: "1px solid var(--rule)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                      <span style={{
+                        fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase",
+                        color: severityColor(op.severity),
+                        border: `1px solid ${severityColor(op.severity)}`,
+                        borderRadius: 2, padding: "2px 8px",
+                      }}>{op.severity || "low"}</span>
+                      <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 18, color: "var(--ink-1)" }}>{op.area}</div>
+                      {op.potential_monthly_savings > 0 && (
+                        <div style={{ marginLeft: "auto", fontSize: 12, color: "var(--credit)" }}>
+                          ~{op.potential_monthly_savings} SGD/mo
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--ink-2)", marginBottom: 6 }}>{op.issue}</div>
+                    <div style={{ fontSize: 13, color: "var(--accent)", fontWeight: 500 }}>→ {op.action}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Strengths + Subscriptions + Watchouts: side-by-side on desktop */}
+          <div className="grid-3">
+            {Array.isArray(review.strengths) && review.strengths.length > 0 && (
+              <div className="panel">
+                <div className="panel-hd"><h3>Strengths</h3></div>
+                <div style={{ padding: "4px 0 8px" }}>
+                  {review.strengths.map((s, i) => (
+                    <div key={i} style={{ padding: "12px 20px", borderTop: "1px solid var(--rule)" }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>{s.area}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{s.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(review.subscriptions_review) && review.subscriptions_review.length > 0 && (
+              <div className="panel">
+                <div className="panel-hd"><h3>Subscriptions</h3></div>
+                <div style={{ padding: "4px 0 8px" }}>
+                  {review.subscriptions_review.map((s, i) => (
+                    <div key={i} style={{ padding: "12px 20px", borderTop: "1px solid var(--rule)" }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>{s.merchant}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{s.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(review.watchouts) && review.watchouts.length > 0 && (
+              <div className="panel">
+                <div className="panel-hd"><h3>Watch-outs</h3></div>
+                <div style={{ padding: "4px 0 8px" }}>
+                  {review.watchouts.map((w, i) => (
+                    <div key={i} style={{ padding: "12px 20px", borderTop: "1px solid var(--rule)" }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4 }}>{w.area}</div>
+                      <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{w.note}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Profiles page (family / sub-accounts) ──────────────────────────────────
 
 const _PROFILE_COLORS = [
@@ -1608,4 +1793,4 @@ function BanksPage({ transactions, privacy, onNav }) {
   );
 }
 
-Object.assign(window, { App, LoginPage, LandingPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, ProfilesPage, BanksPage });
+Object.assign(window, { App, LoginPage, LandingPage, Sidebar, Topbar, Drawer, TweaksPanel, HistoryPage, CategoriesPage, CoachPage, ProfilesPage, BanksPage });

@@ -333,6 +333,18 @@ async function apiUpdateProfile(id, { name, color } = {}) {
   return res.json();
 }
 
+async function apiAiReview({ range_days = 90, profile_id = null, force_refresh = false } = {}) {
+  const res = await _fetch("/api/ai/review", {
+    method: "POST",
+    body: JSON.stringify({ range_days, profile_id, force_refresh }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "AI review failed");
+  }
+  return res.json();
+}
+
 async function apiDeleteProfile(id) {
   const res = await _fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
@@ -360,6 +372,7 @@ Object.assign(window, {
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,
   apiFetchProfiles, apiCreateProfile, apiUpdateProfile, apiDeleteProfile,
+  apiAiReview,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,
 });

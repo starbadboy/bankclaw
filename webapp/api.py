@@ -382,6 +382,45 @@ async def remove_profile(profile_id: str, user: str = Depends(_current_user)) ->
 
 
 # ---------------------------------------------------------------------------
+# AI Coach
+# ---------------------------------------------------------------------------
+@app.post("/api/ai/review")
+async def ai_review(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json() if request.headers.get("content-type", "").startswith("application/json") else {}
+    range_days = int(body.get("range_days") or 90)
+    range_days = max(7, min(range_days, 365))
+    profile_id = body.get("profile_id")
+    force_refresh = bool(body.get("force_refresh"))
+
+    from datetime import datetime, timedelta, timezone  # noqa: PLC0415
+    end_date = datetime.now(tz=timezone.utc).date().isoformat()
+    start_date = (datetime.now(tz=timezone.utc) - timedelta(days=range_days)).date().isoformat()
+
+    main = ensure_main_profile(user)
+    filter_profile = None if (not profile_id or profile_id == "all") else profile_id
+    try:
+        df = get_transactions_by_date_range(
+            start_date, end_date, user,
+            profile_id=filter_profile, main_profile_id=main["id"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
+
+    try:
+        from webapp.ai_coach import generate_review  # noqa: PLC0415
+        return generate_review(
+            user_email=user, df=df, range_days=range_days,
+            profile_id=profile_id, force_refresh=force_refresh,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"AI review failed: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
 # Import
 # ---------------------------------------------------------------------------
 @app.post("/api/import")
