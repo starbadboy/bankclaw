@@ -18,6 +18,7 @@ import pandas as pd
 from openai import OpenAI
 
 from webapp.db import get_db
+from webapp.deepseek_config import DEEPSEEK_BASE_URL, get_deepseek_model
 
 _CACHE_COLLECTION = "ai_reviews"
 
@@ -173,9 +174,9 @@ def _call_llm(aggregate: dict) -> dict:
     if not api_key:
         raise ValueError("DEEPSEEK_API_KEY not set")
 
-    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
     completion = client.chat.completions.create(
-        model="deepseek-chat",
+        model=get_deepseek_model(),
         messages=[
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(aggregate, ensure_ascii=False)},

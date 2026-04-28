@@ -5,6 +5,7 @@ import pandas as pd
 from openai import OpenAI
 
 from webapp.category_definitions import DEFAULT_CATEGORIES
+from webapp.deepseek_config import DEEPSEEK_BASE_URL, get_deepseek_model
 from webapp.repository import get_category_memory, normalize_description
 
 VALID_CATEGORIES = DEFAULT_CATEGORIES
@@ -142,7 +143,7 @@ def categorize_transactions(
 
         client = OpenAI(
             api_key=api_key,
-            base_url="https://api.deepseek.com",
+            base_url=DEEPSEEK_BASE_URL,
         )
 
     for start_idx in range(0, len(unmatched_descriptions), batch_size):
@@ -151,7 +152,7 @@ def categorize_transactions(
         user_content = "\n".join(f"{i + 1}. {desc}" for i, desc in enumerate(batch_descriptions))
 
         completion = client.chat.completions.create(
-            model="deepseek-chat",
+            model=get_deepseek_model(),
             messages=[
                 {"role": "system", "content": _build_system_prompt(valid_categories)},
                 {"role": "user", "content": user_content},

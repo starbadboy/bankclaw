@@ -33,6 +33,7 @@ In **Project → Variables**, add:
 | `MONGODB_URL` | yes (for persistence) | `mongodb+srv://...` — use Atlas or Railway's MongoDB plugin |
 | `MONGODB_DB_NAME` | no | defaults to `bankclaw` |
 | `DEEPSEEK_API_KEY` | optional | enables AI categorisation |
+| `DEEPSEEK_MODEL` | optional | defaults to `deepseek-v4-pro`; use `deepseek-v4-flash` for lower-cost non-thinking mode |
 | `OPENAI_API_KEY` | optional | alternative AI provider |
 | `PDF_PASSWORDS` | optional | JSON array, e.g. `["pass1","pass2"]` |
 | `AUTH_SECRET` | recommended | HMAC key for session tokens (any long random string) |

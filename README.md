@@ -118,12 +118,14 @@ Set the following environment variables to enable AI categorisation and MongoDB 
 | Variable | Required | Description |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | Yes | DeepSeek API key — get one at [platform.deepseek.com](https://platform.deepseek.com) |
-| `MONGODB_URL` | Yes | MongoDB Atlas connection string (e.g. `mongodb+srv://user:pass@cluster.mongodb.net/`) |
+| `DEEPSEEK_MODEL` | No | DeepSeek model name (default: `deepseek-v4-pro`; set `deepseek-v4-flash` for lower-cost non-thinking mode) |
+| `MONGODB_URL` | Yes | MongoDB Atlas connection string (e.g. `mongodb+srv://user:***@cluster.mongodb.net/`) |
 | `MONGODB_DB_NAME` | No | Database name (default: `bankclaw`) |
 
 ```sh
-export DEEPSEEK_API_KEY="your-deepseek-key"
-export MONGODB_URL="mongodb+srv://user:pass@cluster.mongodb.net/"
+export DEEPSEEK_API_KEY="***"
+export DEEPSEEK_MODEL="deepseek-v4-pro"  # optional
+export MONGODB_URL="mongodb+srv://user:***@cluster.mongodb.net/"
 export MONGODB_DB_NAME="bankclaw"  # optional
 ```
 
