@@ -49,19 +49,20 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
 
   const statsThisMonth = useMemoOV(() => {
     const now = new Date();
-    const thisMonth = transactions.filter((t) => {
+    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonth = transactions.filter((t) => {
       const d = new Date(t.date);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
     });
-    const biggest = thisMonth.filter(t => t.amount < 0).sort((a, b) => a.amount - b.amount)[0];
+    const biggest = lastMonth.filter(t => t.amount < 0).sort((a, b) => a.amount - b.amount)[0];
     const merchantMap = new Map();
-    thisMonth.filter(t => t.amount < 0).forEach(t => {
+    lastMonth.filter(t => t.amount < 0).forEach(t => {
       if (!merchantMap.has(t.description)) merchantMap.set(t.description, { count: 0, total: 0 });
       const m = merchantMap.get(t.description); m.count++; m.total += -t.amount;
     });
     const topM = [...merchantMap.entries()].sort((a, b) => b[1].total - a[1].total)[0];
-    const spendDays = Math.min(now.getDate(), new Date(now.getFullYear(), now.getMonth()+1, 0).getDate());
-    const totalSpend = thisMonth.filter(t => t.amount < 0).reduce((s, t) => s - t.amount, 0);
+    const spendDays = new Date(lm.getFullYear(), lm.getMonth() + 1, 0).getDate();
+    const totalSpend = lastMonth.filter(t => t.amount < 0).reduce((s, t) => s - t.amount, 0);
     const avgDaily = spendDays > 0 ? totalSpend / spendDays : 0;
     // Recurring: descriptions appearing in 2+ distinct months
     const descMonths = new Map();
@@ -203,7 +204,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
         <StatBlock
           label="Largest expense"
           value={statsThisMonth.biggest ? fmtSGD(statsThisMonth.biggest.amount, privacy) : "—"}
-          sub={statsThisMonth.biggest ? `${statsThisMonth.biggest.description} · ${fmtDate(statsThisMonth.biggest.date)}` : "No expenses this month"}
+          sub={statsThisMonth.biggest ? `${statsThisMonth.biggest.description} · ${fmtDate(statsThisMonth.biggest.date)}` : "No expenses last month"}
         />
         <StatBlock
           label="Subscriptions"
@@ -219,7 +220,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
         <StatBlock
           label="Avg daily spend"
           value={statsThisMonth.avgDaily > 0 ? fmtSGD(-statsThisMonth.avgDaily, privacy) : "—"}
-          sub={`based on ${statsThisMonth.spendDays} days this month`}
+          sub={`based on ${statsThisMonth.spendDays} days last month`}
           accent
         />
       </div>
