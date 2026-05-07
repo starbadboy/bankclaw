@@ -1,6 +1,7 @@
 """FastAPI backend — serves the Bankclaw dashboard and all API endpoints."""
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import tempfile
@@ -435,11 +436,16 @@ async def import_statements(
     from webapp.processing import process_pdf  # noqa: PLC0415
 
     do_categorize = categorize.lower() not in ("false", "0", "no")
-    results = []
-    all_dfs: list[pd.DataFrame] = []
 
-    for upload in files:
-        content = await upload.read()
+    # Read all uploads up-front (FastAPI UploadFile reads must happen on the event loop)
+    uploads: list[tuple[str, bytes]] = [(u.filename or "upload.pdf", await u.read()) for u in files]
+
+    # Process up to MAX_CONCURRENT_IMPORTS PDFs in parallel. PDF parsing is sync/CPU-bound,
+    # so each task is dispatched to a worker thread via asyncio.to_thread.
+    MAX_CONCURRENT_IMPORTS = 2
+    sem = asyncio.Semaphore(MAX_CONCURRENT_IMPORTS)
+
+    def _process_one_sync(filename: str, content: bytes) -> tuple[dict, pd.DataFrame | None]:
         tmp_path = ""
         try:
             with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -447,17 +453,15 @@ async def import_statements(
                 tmp_path = tmp.name
 
             doc = PdfDocument(file_bytes=content)
-            doc._name = upload.filename or "upload.pdf"  # noqa: SLF001
+            doc._name = filename  # noqa: SLF001
 
             if doc.is_encrypted:
                 if password:
                     doc.authenticate(password)
                     if doc.is_encrypted:
-                        results.append({"filename": upload.filename, "status": "error", "error": "Wrong password"})
-                        continue
+                        return {"filename": filename, "status": "error", "error": "Wrong password"}, None
                 else:
-                    results.append({"filename": upload.filename, "status": "error", "error": "Password required"})
-                    continue
+                    return {"filename": filename, "status": "error", "error": "Password required"}, None
 
             result = process_pdf(doc, password=None)
             rows = [
@@ -470,19 +474,29 @@ async def import_statements(
                 for t in result.file.transactions
             ]
             df = pd.DataFrame(rows)
-            all_dfs.append(df)
-            results.append({
-                "filename": upload.filename,
-                "bank": result.file.metadata.bank_name,
-                "transaction_count": len(rows),
-                "warnings": [{"level": w.level, "message": w.message} for w in result.warnings],
-                "status": "ok",
-            })
+            return (
+                {
+                    "filename": filename,
+                    "bank": result.file.metadata.bank_name,
+                    "transaction_count": len(rows),
+                    "warnings": [{"level": w.level, "message": w.message} for w in result.warnings],
+                    "status": "ok",
+                },
+                df,
+            )
         except Exception as exc:  # noqa: BLE001
-            results.append({"filename": upload.filename, "status": "error", "error": str(exc)})
+            return {"filename": filename, "status": "error", "error": str(exc)}, None
         finally:
             if tmp_path and os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+
+    async def _process_one(filename: str, content: bytes) -> tuple[dict, pd.DataFrame | None]:
+        async with sem:
+            return await asyncio.to_thread(_process_one_sync, filename, content)
+
+    processed = await asyncio.gather(*(_process_one(name, blob) for name, blob in uploads))
+    results = [r for r, _ in processed]
+    all_dfs = [df for _, df in processed if df is not None]
 
     if not all_dfs:
         return {"results": results, "transactions": [], "saved": 0}
