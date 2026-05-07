@@ -32,21 +32,19 @@ function detectRecurring(transactions) {
 }
 
 const _IN_RANGES = [
-  { id: "30d",  label: "Last 30 days" },
-  { id: "90d",  label: "Last 90 days" },
-  { id: "6m",   label: "Last 6 months" },
-  { id: "1y",   label: "Last year" },
-  { id: "all",  label: "All time" },
+  { id: "1m",  label: "Last month" },
+  { id: "3m",  label: "Last 3 months" },
+  { id: "6m",  label: "Last 6 months" },
+  { id: "all", label: "All time" },
 ];
 
 function insightsFilter(txns, rangeId) {
   if (rangeId === "all") return txns;
   const now = new Date();
-  const cutoff = new Date(now);
-  if (rangeId === "30d")  cutoff.setDate(cutoff.getDate() - 30);
-  if (rangeId === "90d")  cutoff.setDate(cutoff.getDate() - 90);
-  if (rangeId === "6m")   cutoff.setMonth(cutoff.getMonth() - 6);
-  if (rangeId === "1y")   cutoff.setFullYear(cutoff.getFullYear() - 1);
+  let cutoff = new Date(now);
+  if (rangeId === "1m") cutoff = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  if (rangeId === "3m") cutoff = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+  if (rangeId === "6m") cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1);
   return txns.filter((t) => new Date(t.date) >= cutoff);
 }
 

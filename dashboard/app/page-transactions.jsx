@@ -14,10 +14,10 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
 
   const filtered = useMemoTX(() => {
     const now = new Date();
-    const cutoff = new Date(now);
-    if (range === "7d") cutoff.setDate(cutoff.getDate() - 7);
-    else if (range === "30d") cutoff.setDate(cutoff.getDate() - 30);
-    else if (range === "90d") cutoff.setDate(cutoff.getDate() - 90);
+    let cutoff = new Date(now);
+    if (range === "1m") cutoff = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    else if (range === "3m") cutoff = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    else if (range === "6m") cutoff = new Date(now.getFullYear(), now.getMonth() - 6, 1);
     else cutoff.setFullYear(2000);
 
     return transactions.filter((t) => {
@@ -57,7 +57,12 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
           <div className="page-kicker">Ledger</div>
           <h1 className="page-title"><i>Transactions.</i></h1>
           <div className="page-sub">
-            {filtered.length} entries{range !== "all" ? ` · last ${range}` : " · all time"}. {query && `Matching "${query}".`}
+            {filtered.length} entries{
+            range === "1m" ? " · last month" :
+            range === "3m" ? " · last 3 months" :
+            range === "6m" ? " · last 6 months" :
+            " · all time"
+          }. {query && `Matching "${query}".`}
           </div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -82,9 +87,14 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
 
       <div className="filterbar">
         <div className="seg">
-          {["7d","30d","90d","all"].map((r) => (
+          {[
+            ["1m", "Last month"],
+            ["3m", "Last 3 months"],
+            ["6m", "Last 6 months"],
+            ["all", "All time"],
+          ].map(([r, label]) => (
             <button key={r} className={range === r ? "on" : ""} onClick={() => setRange(r)}>
-              {r === "all" ? "All time" : r.toUpperCase()}
+              {label}
             </button>
           ))}
         </div>
