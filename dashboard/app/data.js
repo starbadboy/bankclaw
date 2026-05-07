@@ -93,6 +93,27 @@ function dailyFlow(txs, days = 30) {
   return buckets;
 }
 
+function lastMonthFlow(txs) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 0); // last day of prev month
+  const days = end.getDate();
+  const buckets = [];
+  for (let i = 0; i < days; i++) {
+    const d = new Date(start); d.setDate(start.getDate() + i); d.setHours(0, 0, 0, 0);
+    buckets.push({ date: d, income: 0, spend: 0 });
+  }
+  txs.forEach((t) => {
+    const td = new Date(t.date); td.setHours(0, 0, 0, 0);
+    const idx = buckets.findIndex((b) => b.date.getTime() === td.getTime());
+    if (idx >= 0) {
+      if (t.amount > 0) buckets[idx].income += t.amount;
+      else buckets[idx].spend += -t.amount;
+    }
+  });
+  return buckets;
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────
 
 function fmtSGD(n, privacy = false) {
@@ -121,6 +142,6 @@ function relDateGroup(iso) {
 
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
-  totalsFor, spendByCategory, dailyFlow,
+  totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
   fmtSGD, fmtDate, relDateGroup,
 });

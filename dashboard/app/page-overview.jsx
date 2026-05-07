@@ -42,7 +42,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
     [transactions],
   );
   const totals = useMemoOV(() => totalsFor(transactions), [transactions]);
-  const flow = useMemoOV(() => dailyFlow(transactions, 30), [transactions]);
+  const flow = useMemoOV(() => lastMonthFlow(transactions), [transactions]);
   const byCat = useMemoOV(() => spendByCategory(catTxns).slice(0, 6), [catTxns]);
   const topSpend = byCat[0]?.total || 1;
   const activeRange = _OV_RANGES.find((r) => r.id === catRange);
@@ -108,7 +108,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div className="hero-label">30-day cash flow</div>
+              <div className="hero-label">Last month cash flow</div>
               <div className="legend" style={{ marginTop: 8, justifyContent: "flex-end" }}>
                 <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>
                 <span><span className="sw" style={{ background: "oklch(0.48 0.11 35)" }}></span>Out</span>
