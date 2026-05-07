@@ -207,30 +207,38 @@ function InsightsPage({ transactions, privacy }) {
   }, [filtered]);
 
   // ── Category trend (multi-line by month) ────────────────────────────────
+  // Trend windows end at LAST month — current month is excluded since data is
+  // only complete through the previous calendar month.
   const _ctNow = new Date();
+  const _ctLastMonthStart = new Date(_ctNow.getFullYear(), _ctNow.getMonth() - 1, 1);
+  const _ctLastMonthEnd = new Date(_ctNow.getFullYear(), _ctNow.getMonth(), 0); // last day of prev month
   const [trendMode, setTrendMode] = useStateIN("preset"); // "preset" | "custom"
   const [trendPreset, setTrendPreset] = useStateIN("6m"); // "3m" | "6m" | "12m" | "all"
-  const [trendFrom, setTrendFrom] = useStateIN(_ctMonthInputValue(new Date(_ctNow.getFullYear(), _ctNow.getMonth() - 5, 1)));
-  const [trendTo, setTrendTo] = useStateIN(_ctMonthInputValue(_ctNow));
+  const [trendFrom, setTrendFrom] = useStateIN(_ctMonthInputValue(new Date(_ctNow.getFullYear(), _ctNow.getMonth() - 6, 1)));
+  const [trendTo, setTrendTo] = useStateIN(_ctMonthInputValue(_ctLastMonthStart));
   const [trendCats, setTrendCats] = useStateIN(null); // null = auto top 3; otherwise Set<catId>
 
   const trendRange = useMemoIN(() => {
     if (trendMode === "custom") {
-      const a = _ctParseMonth(trendFrom) || new Date(_ctNow.getFullYear(), _ctNow.getMonth() - 5, 1);
-      const b = _ctParseMonth(trendTo) || new Date(_ctNow.getFullYear(), _ctNow.getMonth(), 1);
+      const a = _ctParseMonth(trendFrom) || new Date(_ctNow.getFullYear(), _ctNow.getMonth() - 6, 1);
+      const b = _ctParseMonth(trendTo) || _ctLastMonthStart;
       const start = a <= b ? a : b;
       const hi = a <= b ? b : a;
       const end = new Date(hi.getFullYear(), hi.getMonth() + 1, 0); // last day of hi month
       return { start, end };
     }
     if (trendPreset === "all") {
-      if (transactions.length === 0) return { start: _ctNow, end: _ctNow };
+      if (transactions.length === 0) return { start: _ctLastMonthStart, end: _ctLastMonthEnd };
       const minTs = transactions.reduce((mn, t) => Math.min(mn, new Date(t.date).getTime()), Infinity);
       const minD = new Date(minTs);
-      return { start: new Date(minD.getFullYear(), minD.getMonth(), 1), end: _ctNow };
+      return { start: new Date(minD.getFullYear(), minD.getMonth(), 1), end: _ctLastMonthEnd };
     }
     const n = trendPreset === "3m" ? 3 : trendPreset === "12m" ? 12 : 6;
-    return { start: new Date(_ctNow.getFullYear(), _ctNow.getMonth() - (n - 1), 1), end: _ctNow };
+    // End at last full month; start n months before that.
+    return {
+      start: new Date(_ctLastMonthStart.getFullYear(), _ctLastMonthStart.getMonth() - (n - 1), 1),
+      end: _ctLastMonthEnd,
+    };
   }, [trendMode, trendPreset, trendFrom, trendTo, transactions]);
 
   const trendMonths = useMemoIN(() => _ctMonthsBetween(trendRange.start, trendRange.end), [trendRange]);
