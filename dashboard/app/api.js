@@ -351,6 +351,50 @@ async function apiDeleteProfile(id) {
   return res.json();
 }
 
+// ── Portfolio ─────────────────────────────────────────────────────────────
+
+async function apiFetchPortfolio() {
+  const res = await _fetch("/api/portfolio");
+  if (!res.ok) return { assets: [], debts: [] };
+  const data = await res.json();
+  return { assets: data.assets || [], debts: data.debts || [] };
+}
+
+async function _portfolioMutate(path, method, body) {
+  const res = await _fetch(path, {
+    method,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Request failed");
+  }
+  return res.json();
+}
+
+async function apiCreatePortfolioAsset(payload) {
+  const data = await _portfolioMutate("/api/portfolio/assets", "POST", payload);
+  return data.asset;
+}
+async function apiUpdatePortfolioAsset(id, payload) {
+  const data = await _portfolioMutate(`/api/portfolio/assets/${encodeURIComponent(id)}`, "PATCH", payload);
+  return data.asset;
+}
+async function apiDeletePortfolioAsset(id) {
+  return _portfolioMutate(`/api/portfolio/assets/${encodeURIComponent(id)}`, "DELETE");
+}
+async function apiCreatePortfolioDebt(payload) {
+  const data = await _portfolioMutate("/api/portfolio/debts", "POST", payload);
+  return data.debt;
+}
+async function apiUpdatePortfolioDebt(id, payload) {
+  const data = await _portfolioMutate(`/api/portfolio/debts/${encodeURIComponent(id)}`, "PATCH", payload);
+  return data.debt;
+}
+async function apiDeletePortfolioDebt(id) {
+  return _portfolioMutate(`/api/portfolio/debts/${encodeURIComponent(id)}`, "DELETE");
+}
+
 // Resolve a category id/name to display info. Works for built-ins (by id)
 // and for custom categories (by raw name) via window.ALL_CATEGORIES.
 function getCatInfo(idOrName) {
@@ -372,6 +416,9 @@ Object.assign(window, {
   apiImport,
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,
   apiFetchProfiles, apiCreateProfile, apiUpdateProfile, apiDeleteProfile,
+  apiFetchPortfolio,
+  apiCreatePortfolioAsset, apiUpdatePortfolioAsset, apiDeletePortfolioAsset,
+  apiCreatePortfolioDebt, apiUpdatePortfolioDebt, apiDeletePortfolioDebt,
   apiAiReview,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,

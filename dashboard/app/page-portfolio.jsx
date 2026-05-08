@@ -1,28 +1,6 @@
 // Portfolio tracking page — assets, debts, net worth trend
 const { useState: useStatePF, useMemo: useMemoPF, useEffect: useEffectPF } = React;
 
-/* ============ Seed data ============ */
-const PF_ASSETS_SEED = [
-  { id: "a1", name: "DBS Multiplier",        kind: "cash",       sub: "Operating · 1.85% p.a.",       value: 32400.00, base: 31200.00, ticker: null },
-  { id: "a2", name: "OCBC 360 Savings",      kind: "cash",       sub: "Emergency fund · 4.05% p.a.",  value: 18240.50, base: 17400.00, ticker: null },
-  { id: "a3", name: "VWRA · All-World ETF",  kind: "equities",   sub: "145 units · LSE",              value: 26410.00, base: 21850.00, ticker: "VWRA" },
-  { id: "a4", name: "Apple Inc.",            kind: "equities",   sub: "60 shares · NASDAQ",           value: 14820.00, base: 11400.00, ticker: "AAPL" },
-  { id: "a5", name: "Tesla, Inc.",           kind: "equities",   sub: "22 shares · NASDAQ",           value:  6182.00, base:  9100.00, ticker: "TSLA" },
-  { id: "a6", name: "Singapore 10Y SGS",     kind: "bonds",      sub: "Treasury · matures 2034",      value: 25000.00, base: 25000.00, ticker: null },
-  { id: "a7", name: "CPF Ordinary Account",  kind: "retirement", sub: "Statutory · 2.5% p.a.",        value: 84200.00, base: 78600.00, ticker: null },
-  { id: "a8", name: "CPF Special Account",   kind: "retirement", sub: "Statutory · 4.0% p.a.",        value: 42820.00, base: 39400.00, ticker: null },
-  { id: "a9", name: "SRS Account",           kind: "retirement", sub: "Voluntary · tax deferred",     value: 28000.00, base: 26200.00, ticker: null },
-  { id: "a10", name: "HDB · Tiong Bahru",    kind: "property",   sub: "5-room · valuation Apr 2026",  value: 720000.00, base: 685000.00, ticker: null },
-  { id: "a11", name: "Bitcoin",              kind: "crypto",     sub: "0.42 BTC · cold storage",      value: 28140.00, base: 21800.00, ticker: "BTC" },
-  { id: "a12", name: "Ethereum",             kind: "crypto",     sub: "3.4 ETH · cold storage",       value: 11424.00, base: 10120.00, ticker: "ETH" },
-];
-
-const PF_DEBTS_SEED = [
-  { id: "d1", name: "HDB Mortgage",          kind: "mortgage", sub: "DBS · 2.60% · 21y left",        value: 284500.00, base: 296800.00, apr: 2.60, monthly: 1240.00 },
-  { id: "d2", name: "UOB One Card",          kind: "credit",   sub: "Statement Apr 18 · 26.9% APR",  value:   4820.00, base:   2400.00, apr: 26.9, monthly: 280.00 },
-  { id: "d3", name: "MOE Tuition Loan",      kind: "loan",     sub: "Maturing Jul 2028 · 4.2%",      value:  12400.00, base:  15600.00, apr: 4.2, monthly:  340.00 },
-];
-
 const PF_KINDS = {
   cash:       { name: "Cash & savings",   color: "oklch(0.62 0.09 145)", glyph: "◆" },
   equities:   { name: "Equities",         color: "oklch(0.5 0.13 35)",   glyph: "▲" },
@@ -204,19 +182,67 @@ function AddRowForm({ kind, onSave, onCancel }) {
 
 /* ============ Portfolio Page ============ */
 function PortfolioPage({ privacy, sub = "pf-networth" }) {
-  const [assets, setAssets] = useStatePF(() => {
-    try { const s = JSON.parse(localStorage.getItem("bc_pf_assets") || "null"); if (s) return s; } catch {}
-    return PF_ASSETS_SEED;
-  });
-  const [debts, setDebts] = useStatePF(() => {
-    try { const s = JSON.parse(localStorage.getItem("bc_pf_debts") || "null"); if (s) return s; } catch {}
-    return PF_DEBTS_SEED;
-  });
-  useEffectPF(() => localStorage.setItem("bc_pf_assets", JSON.stringify(assets)), [assets]);
-  useEffectPF(() => localStorage.setItem("bc_pf_debts", JSON.stringify(debts)), [debts]);
-
+  const [assets, setAssets] = useStatePF([]);
+  const [debts, setDebts] = useStatePF([]);
+  const [loading, setLoading] = useStatePF(true);
+  const [err, setErr] = useStatePF("");
   const [adding, setAdding] = useStatePF(null);
   const [filter, setFilter] = useStatePF("all");
+  const [busyId, setBusyId] = useStatePF(null);
+
+  useEffectPF(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetchPortfolio();
+        if (!cancelled) {
+          setAssets(data.assets);
+          setDebts(data.debts);
+        }
+      } catch (e) {
+        if (!cancelled) setErr(e.message || "Failed to load portfolio");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleAddAsset = async (row) => {
+    try {
+      const created = await apiCreatePortfolioAsset({
+        name: row.name, kind: row.kind, sub: row.sub, value: row.value, base: row.base,
+      });
+      setAssets((cur) => [...cur, created]);
+      setAdding(null);
+    } catch (e) { setErr(e.message || "Failed to add asset"); }
+  };
+  const handleAddDebt = async (row) => {
+    try {
+      const created = await apiCreatePortfolioDebt({
+        name: row.name, kind: row.kind, sub: row.sub, value: row.value, base: row.base,
+        apr: 0, monthly: 0,
+      });
+      setDebts((cur) => [...cur, created]);
+      setAdding(null);
+    } catch (e) { setErr(e.message || "Failed to add debt"); }
+  };
+  const handleDeleteAsset = async (id) => {
+    setBusyId(id);
+    try {
+      await apiDeletePortfolioAsset(id);
+      setAssets((cur) => cur.filter((a) => a.id !== id));
+    } catch (e) { setErr(e.message || "Failed to delete asset"); }
+    finally { setBusyId(null); }
+  };
+  const handleDeleteDebt = async (id) => {
+    setBusyId(id);
+    try {
+      await apiDeletePortfolioDebt(id);
+      setDebts((cur) => cur.filter((d) => d.id !== id));
+    } catch (e) { setErr(e.message || "Failed to delete debt"); }
+    finally { setBusyId(null); }
+  };
 
   const totals = useMemoPF(() => {
     const A = assets.reduce((s, x) => s + x.value, 0);
@@ -242,14 +268,59 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
 
   const filteredAssets = filter === "all" ? assets : assets.filter((a) => a.kind === filter);
 
+  const isEmpty = !loading && assets.length === 0 && debts.length === 0;
+
   return (
     <div className="page">
-      <div className="page-kicker">Portfolio · April 2026</div>
+      <div className="page-kicker">Portfolio</div>
       <h1 className="page-title">Net worth, <i>plainly stated.</i></h1>
       <div className="page-sub">
-        Twelve assets and three liabilities, valued nightly. Edits sync to the ledger so cash flow and balance always agree.
+        {assets.length} {assets.length === 1 ? "asset" : "assets"} and {debts.length} {debts.length === 1 ? "liability" : "liabilities"}, stored privately on your account.
       </div>
 
+      {err && (
+        <div className="panel panel-pad" style={{ marginTop: 18, color: "var(--debit)", fontSize: 13 }}>
+          {err}
+        </div>
+      )}
+
+      {loading && (
+        <div className="panel panel-pad" style={{ marginTop: 18, color: "var(--ink-3)", fontSize: 13 }}>
+          Loading portfolio…
+        </div>
+      )}
+
+      {isEmpty && (
+        <div className="panel panel-pad" style={{ marginTop: 18, textAlign: "center", padding: "60px 32px" }}>
+          <div style={{ fontFamily: "Bodoni Moda, serif", fontSize: 26, color: "var(--ink-2)" }}>
+            Build your portfolio.
+          </div>
+          <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 8, marginBottom: 20 }}>
+            Track every account, holding, and obligation in one place.
+          </div>
+          <div style={{ display: "inline-flex", gap: 10 }}>
+            <button className="btn primary" onClick={() => setAdding("asset")}>
+              <Icon name="plus" size={12} stroke={2.2} /> Add asset
+            </button>
+            <button className="btn" onClick={() => setAdding("debt")}>
+              <Icon name="plus" size={12} stroke={2.2} /> Add debt
+            </button>
+          </div>
+          {adding === "asset" && (
+            <div style={{ marginTop: 24, textAlign: "left" }}>
+              <AddRowForm kind="asset" onSave={handleAddAsset} onCancel={() => setAdding(null)} />
+            </div>
+          )}
+          {adding === "debt" && (
+            <div style={{ marginTop: 24, textAlign: "left" }}>
+              <AddRowForm kind="debt" onSave={handleAddDebt} onCancel={() => setAdding(null)} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {!loading && !isEmpty && (
+      <>
       <div style={{ height: 28 }} />
 
       <div className="grid-2">
@@ -356,7 +427,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
 
         {adding === "asset" && (
           <AddRowForm kind="asset"
-            onSave={(row) => { setAssets([row, ...assets]); setAdding(null); }}
+            onSave={handleAddAsset}
             onCancel={() => setAdding(null)} />
         )}
 
@@ -396,7 +467,11 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
                   <span>{delta >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</span>
                 </div>
                 <div className="pf-cell num pf-val">
-                  {fmtSGD(a.value, privacy)}
+                  <span>{fmtSGD(a.value, privacy)}</span>
+                  <button
+                    className="pf-row-del" title="Remove" disabled={busyId === a.id}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteAsset(a.id); }}
+                  ><Icon name="close" size={11} stroke={2} /></button>
                 </div>
               </div>
             );
@@ -417,7 +492,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
 
         {adding === "debt" && (
           <AddRowForm kind="debt"
-            onSave={(row) => { setDebts([{ ...row, apr: 0, monthly: 0 }, ...debts]); setAdding(null); }}
+            onSave={handleAddDebt}
             onCancel={() => setAdding(null)} />
         )}
 
@@ -456,7 +531,11 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
                   <span>{delta >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</span>
                 </div>
                 <div className="pf-cell num pf-val" style={{ color: "var(--debit)" }}>
-                  −{fmtSGD(d.value, privacy)}
+                  <span>−{fmtSGD(d.value, privacy)}</span>
+                  <button
+                    className="pf-row-del" title="Remove" disabled={busyId === d.id}
+                    onClick={(e) => { e.stopPropagation(); handleDeleteDebt(d.id); }}
+                  ><Icon name="close" size={11} stroke={2} /></button>
                 </div>
               </div>
             );
@@ -467,10 +546,21 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       <div style={{ height: 24 }} />
       <div className="grid-4">
         <StatBlock label="Equity exposure" value={`${(((allocation.find(x => x.id === "equities")?.value || 0) + (allocation.find(x => x.id === "crypto")?.value || 0)) / Math.max(1, totals.A) * 100).toFixed(1)}%`} sub="Equities + crypto · target 35%" />
-        <StatBlock label="Liquidity" value={fmtSGD((allocation.find(x => x.id === "cash")?.value || 0), privacy)} sub="6.4 months of expenses" />
-        <StatBlock label="Highest APR debt" value="26.9%" sub="UOB One Card · pay first" />
-        <StatBlock label="Projected at 60" value={fmtSGD(2_840_000, privacy)} sub="@ 5.4% real return" accent />
+        <StatBlock label="Liquidity" value={fmtSGD((allocation.find(x => x.id === "cash")?.value || 0), privacy)} sub="Cash & savings on hand" />
+        {(() => {
+          const top = debts.reduce((m, d) => ((d.apr || 0) > (m?.apr || 0) ? d : m), null);
+          return (
+            <StatBlock
+              label="Highest APR debt"
+              value={top ? `${(top.apr || 0).toFixed(1)}%` : "—"}
+              sub={top ? `${top.name} · pay first` : "No tracked debts"}
+            />
+          );
+        })()}
+        <StatBlock label="Net worth" value={fmtSGD(totals.net, privacy)} sub="Assets minus liabilities" accent />
       </div>
+      </>
+      )}
     </div>
   );
 }

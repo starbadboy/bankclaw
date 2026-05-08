@@ -43,6 +43,15 @@ try:
         list_profiles,
         update_profile,
     )
+    from webapp.portfolio_repository import (
+        create_asset,
+        create_debt,
+        delete_asset,
+        delete_debt,
+        list_portfolio,
+        update_asset,
+        update_debt,
+    )
     _MONGO = True
 except Exception:  # noqa: BLE001
     _MONGO = False
@@ -378,6 +387,84 @@ async def remove_profile(profile_id: str, user: str = Depends(_current_user)) ->
         raise HTTPException(status_code=503, detail="Database not available")
     try:
         return delete_profile(user, profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Portfolio (assets / debts)
+# ---------------------------------------------------------------------------
+@app.get("/api/portfolio")
+async def get_portfolio(user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        return {"assets": [], "debts": []}
+    return list_portfolio(user)
+
+
+@app.post("/api/portfolio/assets")
+async def add_asset(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        asset = create_asset(user, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"asset": asset}
+
+
+@app.patch("/api/portfolio/assets/{asset_id}")
+async def patch_asset(asset_id: str, request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        asset = update_asset(user, asset_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"asset": asset}
+
+
+@app.delete("/api/portfolio/assets/{asset_id}")
+async def remove_asset(asset_id: str, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        return delete_asset(user, asset_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/portfolio/debts")
+async def add_debt(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        debt = create_debt(user, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"debt": debt}
+
+
+@app.patch("/api/portfolio/debts/{debt_id}")
+async def patch_debt(debt_id: str, request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        debt = update_debt(user, debt_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"debt": debt}
+
+
+@app.delete("/api/portfolio/debts/{debt_id}")
+async def remove_debt(debt_id: str, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        return delete_debt(user, debt_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
