@@ -4,8 +4,8 @@ const { useState: useStateOV, useMemo: useMemoOV } = React;
 const _OV_RANGES = [
   { id: "last_month", label: "Last month" },
   { id: "month",      label: "This month" },
-  { id: "30d",        label: "Last 30 days" },
-  { id: "90d",        label: "Last 90 days" },
+  { id: "last_3m",    label: "Last 3 months" },
+  { id: "last_6m",    label: "Last 6 months" },
   { id: "all",        label: "All time" },
 ];
 
@@ -24,9 +24,9 @@ function filterByRange(txns, rangeId) {
       return d.getFullYear() === lm.getFullYear() && d.getMonth() === lm.getMonth();
     });
   }
-  if (rangeId === "30d" || rangeId === "90d") {
-    const days = rangeId === "30d" ? 30 : 90;
-    const cutoff = new Date(now); cutoff.setDate(cutoff.getDate() - days);
+  if (rangeId === "last_3m" || rangeId === "last_6m") {
+    const months = rangeId === "last_3m" ? 3 : 6;
+    const cutoff = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
     return txns.filter((t) => new Date(t.date) >= cutoff);
   }
   return txns; // "all"

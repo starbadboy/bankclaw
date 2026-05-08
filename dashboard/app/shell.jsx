@@ -1395,7 +1395,13 @@ function CoachPage({ currentProfileId = "all", profiles = [] }) {
       <div className="page-kicker">Workspace</div>
       <h1 className="page-title"><i>AI Coach.</i></h1>
       <div className="page-sub">
-        Aggregated review of your last <b>{range}</b> days
+        Aggregated review of your <b>{
+          range === 30 ? "last month" :
+          range === 90 ? "last 3 months" :
+          range === 180 ? "last 6 months" :
+          range === 365 ? "last 12 months" :
+          `last ${range} days`
+        }</b>
         {activeProfile ? <> for <b>{activeProfile.name}</b></> : currentProfileId === "all" && <> across <b>all profiles</b></>}.
         Only aggregates (totals, merchants, categories) are sent to the model — never raw statements.
       </div>
@@ -1405,8 +1411,13 @@ function CoachPage({ currentProfileId = "all", profiles = [] }) {
       {/* Controls */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
         <div className="seg" style={{ display: "flex" }}>
-          {[30, 90, 180, 365].map((d) => (
-            <button key={d} className={range === d ? "on" : ""} onClick={() => setRange(d)}>{d}d</button>
+          {[
+            [30, "1 month"],
+            [90, "3 months"],
+            [180, "6 months"],
+            [365, "12 months"],
+          ].map(([d, label]) => (
+            <button key={d} className={range === d ? "on" : ""} onClick={() => setRange(d)}>{label}</button>
           ))}
         </div>
         <button className="btn" disabled={loading} onClick={refresh}>
