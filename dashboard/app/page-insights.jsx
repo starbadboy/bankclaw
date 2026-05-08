@@ -189,10 +189,13 @@ function InsightsPage({ transactions, privacy }) {
 
   const activeRange = _IN_RANGES.find((r) => r.id === range);
 
-  // Monthly bars — driven by filtered range, showing up to 12 buckets
+  // Monthly bars — driven by filtered range, respecting category exclusions.
+  // Exclusions only affect spend rows; income rows are always positive amounts
+  // and never appear in `excludedCats` (which only holds spend-side category ids).
   const months = useMemoIN(() => {
     const bucketMap = new Map();
     filtered.forEach((t) => {
+      if (t.amount < 0 && excludedCats.has(t.category)) return;
       const d = new Date(t.date);
       const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2,"0")}`;
       const label = d.toLocaleDateString("en-GB", { month: "short" }).toUpperCase();
@@ -204,7 +207,7 @@ function InsightsPage({ transactions, privacy }) {
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([, v]) => v)
       .slice(-12);
-  }, [filtered]);
+  }, [filtered, excludedCats]);
 
   // ── Category trend (multi-line by month) ────────────────────────────────
   // Trend windows end at LAST month — current month is excluded since data is
@@ -366,7 +369,12 @@ function InsightsPage({ transactions, privacy }) {
         <div className="panel">
           <div className="panel-hd">
             <h3>Cash flow · {activeRange.label.toLowerCase()}</h3>
-            <div className="legend">
+            <div className="legend" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {excludedCats.size > 0 && (
+                <span className="hint" style={{ fontSize: 11 }}>
+                  {excludedCats.size} hidden
+                </span>
+              )}
               <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>
               <span><span className="sw" style={{ background: "oklch(0.48 0.11 35)" }}></span>Out</span>
             </div>
