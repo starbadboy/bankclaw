@@ -532,25 +532,37 @@ function ChangePasswordModal({ onClose }) {
 
 // ── Sidebar ────────────────────────────────────────────────────────────────
 
-function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobileClose }) {
+function Sidebar({ page, mode, onMode, onNav, onSignOut, onChangePassword, mobileOpen, onMobileClose }) {
   const email = getEmail() || "";
   const initials = email
     ? email.slice(0, 2).toUpperCase()
     : "?";
 
-  const items = [
+  const ledgerItems = [
     { id: "overview", label: "Overview", icon: "home" },
     { id: "transactions", label: "Transactions", icon: "list" },
     { id: "insights", label: "Insights", icon: "pie" },
     { id: "import", label: "Import", icon: "upload" },
     { id: "coach", label: "AI Coach", icon: "sparkle" },
   ];
-  const meta = [
+  const ledgerMeta = [
     { id: "history", label: "History", icon: "clock" },
     { id: "categories", label: "Categories", icon: "sparkle" },
     { id: "profiles", label: "Profiles", icon: "home" },
     { id: "banks", label: "Connected banks", icon: "file" },
   ];
+  const portfolioItems = [
+    { id: "pf-networth", label: "Net worth", icon: "home" },
+    { id: "pf-holdings", label: "Holdings", icon: "list" },
+    { id: "pf-allocation", label: "Allocation", icon: "pie" },
+    { id: "pf-performance", label: "Performance", icon: "sparkle" },
+  ];
+  const portfolioMeta = [
+    { id: "pf-goals", label: "Goals", icon: "check" },
+    { id: "pf-accounts", label: "Linked accounts", icon: "file" },
+  ];
+  const items = mode === "portfolio" ? portfolioItems : ledgerItems;
+  const meta = mode === "portfolio" ? portfolioMeta : ledgerMeta;
   const handleNav = (id) => { onNav(id); if (onMobileClose) onMobileClose(); };
   return (
     <>
@@ -560,12 +572,21 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobil
         <div className="brand-mark">B</div>
         <div>
           <div className="brand-name">Bankclaw</div>
-          <div className="brand-sub">Private Ledger</div>
+          <div className="brand-sub">{mode === "portfolio" ? "Portfolio" : "Private Ledger"}</div>
         </div>
       </div>
 
+      <div className="mode-switch" role="tablist" aria-label="Workspace mode">
+        <button className={mode === "ledger" ? "on" : ""} onClick={() => onMode("ledger")} role="tab" aria-selected={mode === "ledger"}>
+          <span className="m-glyph">§</span> Ledger
+        </button>
+        <button className={mode === "portfolio" ? "on" : ""} onClick={() => onMode("portfolio")} role="tab" aria-selected={mode === "portfolio"}>
+          <span className="m-glyph">∆</span> Portfolio
+        </button>
+      </div>
+
       <div className="nav-group">
-        <div className="nav-label">Workspace</div>
+        <div className="nav-label">{mode === "portfolio" ? "Wealth" : "Workspace"}</div>
         {items.map((i) => (
           <div key={i.id} className={"nav-item" + (page === i.id ? " active" : "")}
             onClick={() => handleNav(i.id)}>
@@ -578,7 +599,7 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobil
       <div className="nav-group">
         <div className="nav-label">Library</div>
         {meta.map((i) => (
-          <div key={i.id} className="nav-item" onClick={() => handleNav(i.id)}>
+          <div key={i.id} className={"nav-item" + (page === i.id ? " active" : "")} onClick={() => handleNav(i.id)}>
             <Icon name={i.icon} size={15} stroke={1.5} />
             <span>{i.label}</span>
           </div>
@@ -613,8 +634,8 @@ function Sidebar({ page, onNav, onSignOut, onChangePassword, mobileOpen, onMobil
   );
 }
 
-function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav, onOpenMobileMenu, profiles = [], currentProfileId, onChangeProfile }) {
-  const crumbs = {
+function Topbar({ page, mode, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNav, onOpenMobileMenu, profiles = [], currentProfileId, onChangeProfile }) {
+  const ledgerCrumbs = {
     overview: ["Workspace", "Overview"],
     transactions: ["Workspace", "Transactions"],
     insights: ["Workspace", "Insights"],
@@ -624,7 +645,17 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
     categories: ["Library", "Categories"],
     profiles: ["Library", "Profiles"],
     banks: ["Library", "Connected banks"],
-  }[page] || ["Workspace", page];
+  };
+  const portfolioCrumbs = {
+    "pf-networth":    ["Wealth", "Net worth"],
+    "pf-holdings":    ["Wealth", "Holdings"],
+    "pf-allocation":  ["Wealth", "Allocation"],
+    "pf-performance": ["Wealth", "Performance"],
+    "pf-goals":       ["Library", "Goals"],
+    "pf-accounts":    ["Library", "Linked accounts"],
+  };
+  const isPF = mode === "portfolio";
+  const crumbs = (isPF ? portfolioCrumbs : ledgerCrumbs)[page] || ["Workspace", page];
   return (
     <div className="topbar">
       <button className="icon-btn mobile-only" title="Menu" onClick={onOpenMobileMenu} style={{ flexShrink: 0 }}>
@@ -655,16 +686,22 @@ function Topbar({ page, query, setQuery, privacy, setPrivacy, onOpenTweaks, onNa
       <div className="spacer"></div>
       <div className="search">
         <Icon name="search" size={14} />
-        <input placeholder="Search transactions, merchants, references…"
-          value={query} onChange={(e) => { setQuery(e.target.value); if (page !== "transactions") onNav("transactions"); }} />
+        <input placeholder={isPF ? "Search holdings, tickers, accounts…" : "Search transactions, merchants, references…"}
+          value={query} onChange={(e) => { setQuery(e.target.value); if (!isPF && page !== "transactions") onNav("transactions"); }} />
         <kbd>⌘K</kbd>
       </div>
       <button className="icon-btn" title={privacy ? "Reveal amounts" : "Hide amounts"} onClick={() => setPrivacy(!privacy)}>
         <Icon name={privacy ? "eyeOff" : "eye"} size={15} />
       </button>
-      <button className="btn primary" onClick={() => onNav("import")}>
-        <Icon name="plus" size={12} stroke={2.2} /> Import
-      </button>
+      {isPF ? (
+        <button className="btn primary" onClick={() => onNav("pf-holdings")}>
+          <Icon name="plus" size={12} stroke={2.2} /> Add holding
+        </button>
+      ) : (
+        <button className="btn primary" onClick={() => onNav("import")}>
+          <Icon name="plus" size={12} stroke={2.2} /> Import
+        </button>
+      )}
     </div>
   );
 }
@@ -886,6 +923,9 @@ function App() {
   });
   const saveTweaks = (t) => localStorage.setItem("bc_tweaks", JSON.stringify(t));
 
+  const [mode, setMode] = useStateApp(() => localStorage.getItem("bc_mode") || "ledger");
+  useEffectApp(() => localStorage.setItem("bc_mode", mode), [mode]);
+
   const [page, setPage] = useStateApp(() => localStorage.getItem("bc_page") || "overview");
   useEffectApp(() => localStorage.setItem("bc_page", page), [page]);
 
@@ -975,6 +1015,13 @@ function App() {
 
   const navigate = (p) => { setPage(p); setOpenTx(null); };
 
+  const onMode = (m) => {
+    setMode(m);
+    if (m === "portfolio" && !page.startsWith("pf-")) setPage("pf-networth");
+    if (m === "ledger" && page.startsWith("pf-")) setPage("overview");
+    setOpenTx(null);
+  };
+
   if (!authed) {
     if (authView === "landing") {
       return (
@@ -991,9 +1038,9 @@ function App() {
 
   return (
     <div className="app">
-      <Sidebar page={page} onNav={navigate} onSignOut={handleSignOut} onChangePassword={() => setChangePasswordOpen(true)} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
+      <Sidebar page={page} mode={mode} onMode={onMode} onNav={navigate} onSignOut={handleSignOut} onChangePassword={() => setChangePasswordOpen(true)} mobileOpen={mobileMenuOpen} onMobileClose={() => setMobileMenuOpen(false)} />
       <main className="main">
-        <Topbar page={page} query={query} setQuery={setQuery}
+        <Topbar page={page} mode={mode} query={query} setQuery={setQuery}
           privacy={tweaks.privacy}
           setPrivacy={(v) => { const t = { ...tweaks, privacy: v }; setTweaks(t); saveTweaks(t); }}
           onOpenTweaks={() => setTweaksOpen(true)} onNav={navigate} onOpenMobileMenu={() => setMobileMenuOpen(true)}
@@ -1001,15 +1048,25 @@ function App() {
           onChangeProfile={(id) => setCurrentProfileId(id)}
         />
 
-        {page === "overview" && <OverviewPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} onOpenTx={setOpenTx} />}
-        {page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} availableCategories={allCategories} onTxChanged={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
-        {page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
-        {page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
-        {page === "coach" && <CoachPage currentProfileId={currentProfileId} profiles={profiles} />}
-        {page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
-        {page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} availableCategories={allCategories} reloadCategories={loadCategories} />}
-        {page === "profiles" && <ProfilesPage profiles={profiles} reloadProfiles={loadProfiles} />}
-        {page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
+        {mode === "ledger" && page === "overview" && <OverviewPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} onOpenTx={setOpenTx} />}
+        {mode === "ledger" && page === "transactions" && <TransactionsPage transactions={transactions} privacy={tweaks.privacy} query={query} onOpenTx={setOpenTx} availableCategories={allCategories} onTxChanged={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
+        {mode === "ledger" && page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
+        {mode === "ledger" && page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
+        {mode === "ledger" && page === "coach" && <CoachPage currentProfileId={currentProfileId} profiles={profiles} />}
+        {mode === "ledger" && page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
+        {mode === "ledger" && page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} availableCategories={allCategories} reloadCategories={loadCategories} />}
+        {mode === "ledger" && page === "profiles" && <ProfilesPage profiles={profiles} reloadProfiles={loadProfiles} />}
+        {mode === "ledger" && page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
+
+        {mode === "portfolio" && (page === "pf-networth" || page === "pf-holdings" || page === "pf-allocation" || page === "pf-performance") &&
+          <PortfolioPage privacy={tweaks.privacy} sub={page} />}
+        {mode === "portfolio" && (page === "pf-goals" || page === "pf-accounts") && (
+          <div className="page">
+            <div className="page-kicker">Library</div>
+            <h1 className="page-title">{page === "pf-goals" ? "Goals" : "Linked accounts"}</h1>
+            <div className="page-sub">Coming soon.</div>
+          </div>
+        )}
       </main>
 
       <Drawer tx={openTx} onClose={() => setOpenTx(null)} privacy={tweaks.privacy} onChanged={loadTransactions} availableCategories={allCategories} />

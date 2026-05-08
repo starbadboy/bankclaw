@@ -963,3 +963,153 @@ body {
   background: var(--credit); display: inline-block;
   animation: pulse-glow 2s infinite;
 }
+
+/* ========== Mode switch (Ledger ⇄ Portfolio) ========== */
+.mode-switch {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  border: 1px solid var(--rule); border-radius: 2px;
+  background: var(--paper-2);
+  margin: -2px 0 14px;
+}
+.mode-switch button {
+  background: transparent; border: 0; padding: 9px 8px;
+  font: inherit; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--ink-3); cursor: pointer;
+  font-family: "IBM Plex Sans", sans-serif; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border-right: 1px solid var(--rule);
+  transition: background 120ms, color 120ms;
+}
+.mode-switch button:last-child { border-right: 0; }
+.mode-switch button .m-glyph {
+  font-family: "Bodoni Moda", serif; font-size: 16px; line-height: 1;
+  color: var(--ink-4); letter-spacing: 0;
+}
+.mode-switch button:hover { color: var(--ink); }
+.mode-switch button.on { background: var(--ink); color: var(--paper); }
+.mode-switch button.on .m-glyph { color: var(--accent); }
+
+/* ========== Portfolio page ========== */
+.alloc-leg {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--ink-2);
+  padding: 4px 0;
+}
+.alloc-leg .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.alloc-leg .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alloc-leg .pc { font-size: 11px; color: var(--ink-3); }
+
+.pf-table-hd {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 1fr 110px 90px 1.1fr;
+  font-size: 9.5px; letter-spacing: 0.26em; text-transform: uppercase;
+  color: var(--ink-4); padding: 14px 24px; border-top: 1px solid var(--rule);
+  font-family: "IBM Plex Sans", sans-serif; font-weight: 500;
+  background: var(--paper-2);
+}
+.pf-table-hd.debts {
+  grid-template-columns: 2.2fr 0.7fr 0.9fr 110px 90px 1.1fr;
+}
+.pf-table-hd > div.num { text-align: right; }
+
+.pf-table { display: flex; flex-direction: column; }
+.pf-row {
+  display: grid;
+  grid-template-columns: 2.2fr 1fr 1fr 110px 90px 1.1fr;
+  border-top: 1px solid var(--rule);
+  transition: background 100ms;
+  cursor: pointer;
+}
+.pf-row.debts {
+  grid-template-columns: 2.2fr 0.7fr 0.9fr 110px 90px 1.1fr;
+}
+.pf-row:hover { background: var(--paper-2); }
+.pf-cell {
+  padding: 14px 24px;
+  display: flex; align-items: center;
+  min-width: 0;
+}
+.pf-cell.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
+.pf-cell.desc { gap: 14px; }
+.pf-glyph {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--rule);
+  display: grid; place-items: center;
+  font-family: "Bodoni Moda", serif; font-size: 14px;
+  flex-shrink: 0;
+}
+.pf-cell.desc .nm {
+  font-size: 13.5px; font-weight: 500; letter-spacing: -0.005em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pf-cell.desc .sub {
+  font-size: 11px; color: var(--ink-4);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+.kind-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; color: var(--ink-3);
+  padding: 3px 9px; border: 1px solid var(--rule); border-radius: 999px;
+  background: var(--paper);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.pf-delta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11.5px; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.pf-delta.up { color: var(--credit); }
+.pf-delta.down { color: var(--debit); }
+.pf-val {
+  font-family: "Bodoni Moda", serif;
+  font-weight: 500;
+  font-size: 17px; letter-spacing: -0.015em;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.pf-add-row {
+  border-top: 1px solid var(--rule);
+  background: var(--paper-2);
+  padding: 22px 24px;
+}
+.pf-add-grid {
+  display: grid; grid-template-columns: 2fr 1fr 1fr 2fr; gap: 14px;
+}
+.pf-add-grid label {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 9.5px; letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--ink-4); font-weight: 500;
+  font-family: "IBM Plex Sans", sans-serif;
+}
+.pf-add-grid label em { font-style: normal; color: var(--ink-4); opacity: 0.7; letter-spacing: 0.04em; text-transform: none; }
+.pf-add-grid label > span { display: block; }
+.pf-add-grid input, .pf-add-grid select {
+  background: var(--paper); border: 1px solid var(--rule);
+  border-radius: 2px; padding: 9px 12px;
+  font: inherit; font-size: 13px; color: var(--ink);
+  letter-spacing: normal; text-transform: none;
+  outline: none;
+  font-family: "IBM Plex Sans", sans-serif; font-weight: 400;
+}
+.pf-add-grid input:focus, .pf-add-grid select:focus {
+  border-color: var(--accent);
+}
+.pf-add-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .pf-table-hd, .pf-row { grid-template-columns: 1.6fr 90px 1.1fr; }
+  .pf-table-hd > div:nth-child(2),
+  .pf-table-hd > div:nth-child(4),
+  .pf-table-hd > div:nth-child(5),
+  .pf-row > div:nth-child(2),
+  .pf-row > div:nth-child(4),
+  .pf-row > div:nth-child(5) { display: none; }
+  .pf-table-hd.debts, .pf-row.debts { grid-template-columns: 1.4fr 70px 1.1fr; }
+  .pf-add-grid { grid-template-columns: 1fr; }
+}
