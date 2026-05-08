@@ -546,17 +546,17 @@ body {
   padding: 16px 0 18px;
   flex-wrap: wrap;
 }
-.filterbar .seg {
+.seg {
   display: flex; border: 1px solid var(--rule); border-radius: 2px; overflow: hidden;
   background: var(--paper);
 }
-.filterbar .seg button {
+.seg button {
   background: transparent; border: 0; padding: 7px 14px; font: inherit;
   font-size: 11.5px; letter-spacing: 0.04em;
   color: var(--ink-2); cursor: pointer; border-right: 1px solid var(--rule);
 }
-.filterbar .seg button:last-child { border-right: 0; }
-.filterbar .seg button.on { background: var(--ink); color: var(--paper); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--ink); color: var(--paper); }
 
 /* ========== Detail drawer ========== */
 .drawer-backdrop {
