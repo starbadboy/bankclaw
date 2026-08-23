@@ -18,3 +18,19 @@ test("portfolio page renders only real valuation histories", () => {
   assert.doesNotMatch(source, /function buildSeries/);
   assert.doesNotMatch(source, /v \* 0\.98/);
 });
+
+test("portfolio page loads and renders user-defined asset types everywhere", () => {
+  assert.match(source, /apiFetchPortfolioAssetTypes/);
+  assert.match(source, /apiCreatePortfolioAssetType/);
+  assert.match(source, /apiUpdatePortfolioAssetType/);
+  assert.match(source, /apiDeletePortfolioAssetType/);
+  assert.match(source, /Create custom type/);
+  assert.match(source, /Manage types/);
+  assert.match(source, /assetKinds\[a\.kind\]/);
+  assert.doesNotMatch(source, /const k = PF_KINDS\[a\.kind\]/);
+});
+
+test("portfolio page prevents deleting a custom type that is in use", () => {
+  assert.match(source, /assets\.filter\(\(asset\) => asset\.kind === assetType\.id\)/);
+  assert.match(source, /inUseCount > 0/);
+});

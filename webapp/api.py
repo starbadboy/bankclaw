@@ -45,14 +45,18 @@ try:
     )
     from webapp.portfolio_repository import (
         create_asset,
+        create_asset_type,
         create_debt,
         delete_asset,
+        delete_asset_type,
         delete_debt,
         delete_valuation,
+        list_asset_types,
         list_portfolio,
         list_valuations,
         record_valuation,
         update_asset,
+        update_asset_type,
         update_debt,
     )
     _MONGO = True
@@ -402,6 +406,51 @@ async def get_portfolio(user: str = Depends(_current_user)) -> dict:
     if not _MONGO:
         return {"assets": [], "debts": []}
     return list_portfolio(user)
+
+
+@app.get("/api/portfolio/asset-types")
+async def get_portfolio_asset_types(user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        return {"asset_types": []}
+    return {"asset_types": list_asset_types(user)}
+
+
+@app.post("/api/portfolio/asset-types")
+async def add_portfolio_asset_type(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        asset_type = create_asset_type(user, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"asset_type": asset_type}
+
+
+@app.patch("/api/portfolio/asset-types/{type_id}")
+async def edit_portfolio_asset_type(
+    type_id: str,
+    request: Request,
+    user: str = Depends(_current_user),
+) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        asset_type = update_asset_type(user, type_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"asset_type": asset_type}
+
+
+@app.delete("/api/portfolio/asset-types/{type_id}")
+async def remove_portfolio_asset_type(type_id: str, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        return delete_asset_type(user, type_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/portfolio/assets")

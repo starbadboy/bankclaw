@@ -121,16 +121,34 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
 }
 
 /* ============ Add asset / debt inline form ============ */
-function AddRowForm({ kind, onSave, onCancel }) {
+function AddRowForm({ kind, onSave, onCancel, assetKinds = PF_KINDS, onCreateAssetType }) {
   const [name, setName] = useStatePF("");
   const [type, setType] = useStatePF(kind === "asset" ? "cash" : "credit");
   const [value, setValue] = useStatePF("");
   const [sub, setSub] = useStatePF("");
   const [asOfDate, setAsOfDate] = useStatePF(portfolioTodayIso());
-  const types = kind === "asset" ? Object.entries(PF_KINDS) : Object.entries(PF_DEBT_KINDS);
+  const [customName, setCustomName] = useStatePF("");
+  const [customColor, setCustomColor] = useStatePF("#8B5CF6");
+  const [customBusy, setCustomBusy] = useStatePF(false);
+  const [customError, setCustomError] = useStatePF("");
+  const types = kind === "asset" ? Object.entries(assetKinds) : Object.entries(PF_DEBT_KINDS);
+  const createCustomType = async () => {
+    if (!customName.trim() || !onCreateAssetType) return;
+    setCustomBusy(true);
+    setCustomError("");
+    try {
+      const created = await onCreateAssetType({ name: customName.trim(), color: customColor });
+      setType(created.id);
+      setCustomName("");
+    } catch (error) {
+      setCustomError(error.message || "Failed to create asset type");
+    } finally {
+      setCustomBusy(false);
+    }
+  };
   const submit = () => {
     const v = parseFloat(String(value).replace(/[, ]/g, ""));
-    if (!name.trim() || !isFinite(v) || v < 0 || !asOfDate) return;
+    if (!name.trim() || !isFinite(v) || v < 0 || !asOfDate || type === "__new_custom__") return;
     onSave({
       id: `${kind === "asset" ? "a" : "d"}_${Date.now().toString(36)}`,
       name: name.trim(),
@@ -152,6 +170,7 @@ function AddRowForm({ kind, onSave, onCancel }) {
           <span>Type</span>
           <select value={type} onChange={(e) => setType(e.target.value)}>
             {types.map(([k, v]) => <option key={k} value={k}>{v.name}</option>)}
+            {kind === "asset" && <option value="__new_custom__">+ Create custom type…</option>}
           </select>
         </label>
         <label>
@@ -167,12 +186,148 @@ function AddRowForm({ kind, onSave, onCancel }) {
           <input value={sub} onChange={(e) => setSub(e.target.value)} placeholder="e.g. 24 units · NASDAQ" />
         </label>
       </div>
+      {kind === "asset" && type === "__new_custom__" && (
+        <div className="pf-custom-type-inline">
+          <label>
+            <span>Custom type name</span>
+            <input value={customName} onChange={(event) => setCustomName(event.target.value)}
+              placeholder="e.g. CPF, Gold, Insurance" autoFocus />
+          </label>
+          <label className="pf-color-field">
+            <span>Color</span>
+            <input type="color" value={customColor} onChange={(event) => setCustomColor(event.target.value)} />
+          </label>
+          <button className="btn" type="button" disabled={customBusy || !customName.trim()} onClick={createCustomType}>
+            <Icon name="plus" size={12} stroke={2} /> {customBusy ? "Creating…" : "Create custom type"}
+          </button>
+          {customError && <div className="pf-custom-type-error">{customError}</div>}
+        </div>
+      )}
       <div className="pf-add-actions">
         <button className="btn ghost" onClick={onCancel}>Cancel</button>
         <button className="btn primary" onClick={submit}>
           <Icon name="check" size={12} stroke={2} /> Add {kind}
         </button>
       </div>
+    </div>
+  );
+}
+
+function AssetTypeManager({ assetTypes, assets, busyId, onCreate, onUpdate, onDelete, onClose }) {
+  const [newName, setNewName] = useStatePF("");
+  const [newColor, setNewColor] = useStatePF("#8B5CF6");
+  const [drafts, setDrafts] = useStatePF({});
+  const [localError, setLocalError] = useStatePF("");
+
+  useEffectPF(() => {
+    setDrafts(Object.fromEntries(assetTypes.map((assetType) => [
+      assetType.id,
+      { name: assetType.name, color: assetType.color },
+    ])));
+  }, [assetTypes]);
+
+  const createType = async (event) => {
+    event.preventDefault();
+    if (!newName.trim()) return;
+    setLocalError("");
+    try {
+      await onCreate({ name: newName.trim(), color: newColor });
+      setNewName("");
+    } catch (error) {
+      setLocalError(error.message || "Failed to create asset type");
+    }
+  };
+
+  const updateType = async (assetType, draft) => {
+    setLocalError("");
+    try {
+      await onUpdate(assetType.id, { name: draft.name.trim(), color: draft.color });
+    } catch (error) {
+      setLocalError(error.message || "Failed to update asset type");
+    }
+  };
+
+  const deleteType = async (assetType) => {
+    setLocalError("");
+    try {
+      await onDelete(assetType.id);
+    } catch (error) {
+      setLocalError(error.message || "Failed to delete asset type");
+    }
+  };
+
+  return (
+    <div className="pf-valuation-overlay" role="presentation" onMouseDown={onClose}>
+      <aside className="pf-valuation-panel pf-asset-type-panel" role="dialog" aria-modal="true"
+        aria-label="Manage asset types" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="pf-valuation-head">
+          <div>
+            <div className="tag">Portfolio settings</div>
+            <h2>Asset types</h2>
+            <p>Create your own classes for holdings. Built-in types remain available.</p>
+          </div>
+          <button className="pf-panel-close" onClick={onClose} aria-label="Close asset type manager">
+            <Icon name="close" size={16} stroke={1.8} />
+          </button>
+        </div>
+
+        <form className="pf-asset-type-create" onSubmit={createType}>
+          <label>
+            <span>New type</span>
+            <input value={newName} onChange={(event) => setNewName(event.target.value)}
+              placeholder="e.g. CPF, Gold, Insurance" />
+          </label>
+          <label className="pf-color-field">
+            <span>Color</span>
+            <input type="color" value={newColor} onChange={(event) => setNewColor(event.target.value)} />
+          </label>
+          <button className="btn primary" type="submit" disabled={!newName.trim() || busyId === "asset-type:create"}>
+            <Icon name="plus" size={12} stroke={2} /> Create custom type
+          </button>
+        </form>
+        {localError && <div className="pf-custom-type-error">{localError}</div>}
+
+        <div className="pf-valuation-list-head">
+          <span>Custom types</span>
+          <span>{assetTypes.length}</span>
+        </div>
+        <div className="pf-asset-type-list">
+          {assetTypes.length === 0 && (
+            <div className="pf-asset-type-empty">No custom asset types yet.</div>
+          )}
+          {assetTypes.map((assetType) => {
+            const inUseCount = assets.filter((asset) => asset.kind === assetType.id).length;
+            const draft = drafts[assetType.id] || assetType;
+            const busy = busyId === `asset-type:${assetType.id}`;
+            return (
+              <div className="pf-asset-type-row" key={assetType.id}>
+                <input className="pf-asset-type-color" type="color" value={draft.color}
+                  aria-label={`Color for ${assetType.name}`}
+                  onChange={(event) => setDrafts((current) => ({
+                    ...current,
+                    [assetType.id]: { ...draft, color: event.target.value },
+                  }))} />
+                <div className="pf-asset-type-main">
+                  <input value={draft.name} aria-label={`Name for ${assetType.name}`}
+                    onChange={(event) => setDrafts((current) => ({
+                      ...current,
+                      [assetType.id]: { ...draft, name: event.target.value },
+                    }))} />
+                  <span>{inUseCount > 0 ? `${inUseCount} ${inUseCount === 1 ? "asset" : "assets"} in use` : "Unused"}</span>
+                </div>
+                <button className="btn ghost" type="button" disabled={busy || !draft.name.trim()}
+                  onClick={() => updateType(assetType, draft)}>
+                  Save
+                </button>
+                <button className="pf-valuation-delete" type="button" title="Delete custom asset type"
+                  disabled={busy || inUseCount > 0} onClick={() => deleteType(assetType)}>
+                  <Icon name="close" size={11} stroke={2} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
     </div>
   );
 }
@@ -260,6 +415,7 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
 function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [assets, setAssets] = useStatePF([]);
   const [debts, setDebts] = useStatePF([]);
+  const [assetTypes, setAssetTypes] = useStatePF([]);
   const [loading, setLoading] = useStatePF(true);
   const [err, setErr] = useStatePF("");
   const [adding, setAdding] = useStatePF(null);
@@ -267,9 +423,21 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [busyId, setBusyId] = useStatePF(null);
   const [histories, setHistories] = useStatePF({});
   const [activeValuation, setActiveValuation] = useStatePF(null);
+  const [managingTypes, setManagingTypes] = useStatePF(false);
+
+  const assetKinds = useMemoPF(() => ({
+    ...PF_KINDS,
+    ...Object.fromEntries(assetTypes.map((assetType) => [
+      assetType.id,
+      { name: assetType.name, color: assetType.color, glyph: "◆", custom: true },
+    ])),
+  }), [assetTypes]);
 
   const fetchPortfolioData = async () => {
-    const data = await apiFetchPortfolio();
+    const [data, customAssetTypes] = await Promise.all([
+      apiFetchPortfolio(),
+      apiFetchPortfolioAssetTypes(),
+    ]);
     const items = [
       ...data.assets.map((item) => ({ itemType: "asset", item })),
       ...data.debts.map((item) => ({ itemType: "debt", item })),
@@ -278,12 +446,13 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       `${itemType}:${item.id}`,
       await apiFetchPortfolioValuations(itemType, item.id),
     ]));
-    return { ...data, histories: Object.fromEntries(entries) };
+    return { ...data, assetTypes: customAssetTypes, histories: Object.fromEntries(entries) };
   };
 
   const applyPortfolioData = (data) => {
     setAssets(data.assets);
     setDebts(data.debts);
+    setAssetTypes(data.assetTypes || []);
     setHistories(data.histories);
   };
 
@@ -328,6 +497,54 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       setAdding(null);
     } catch (e) { setErr(e.message || "Failed to add debt"); }
   };
+
+  const handleCreateAssetType = async (payload) => {
+    setBusyId("asset-type:create");
+    setErr("");
+    try {
+      const created = await apiCreatePortfolioAssetType(payload);
+      setAssetTypes((current) => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      return created;
+    } catch (e) {
+      setErr(e.message || "Failed to create asset type");
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleUpdateAssetType = async (typeId, payload) => {
+    setBusyId(`asset-type:${typeId}`);
+    setErr("");
+    try {
+      const updated = await apiUpdatePortfolioAssetType(typeId, payload);
+      setAssetTypes((current) => current
+        .map((assetType) => assetType.id === typeId ? updated : assetType)
+        .sort((a, b) => a.name.localeCompare(b.name)));
+      return updated;
+    } catch (e) {
+      setErr(e.message || "Failed to update asset type");
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleDeleteAssetType = async (typeId) => {
+    setBusyId(`asset-type:${typeId}`);
+    setErr("");
+    try {
+      await apiDeletePortfolioAssetType(typeId);
+      setAssetTypes((current) => current.filter((assetType) => assetType.id !== typeId));
+      if (filter === typeId) setFilter("all");
+    } catch (e) {
+      setErr(e.message || "Failed to delete asset type");
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleDeleteAsset = async (id) => {
     setBusyId(id);
     try {
@@ -391,9 +608,9 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     const map = {};
     assets.forEach((a) => { map[a.kind] = (map[a.kind] || 0) + a.value; });
     return Object.entries(map).map(([k, v]) => ({
-      id: k, value: v, color: PF_KINDS[k]?.color || "var(--ink-3)", name: PF_KINDS[k]?.name || k,
+      id: k, value: v, color: assetKinds[k]?.color || "var(--ink-3)", name: assetKinds[k]?.name || k,
     })).sort((a, b) => b.value - a.value);
-  }, [assets]);
+  }, [assets, assetKinds]);
 
   const history = useMemoPF(
     () => buildPortfolioNetWorthHistory(assets, debts, histories, { months: 12 }),
@@ -447,10 +664,12 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
             <button className="btn" onClick={() => setAdding("debt")}>
               <Icon name="plus" size={12} stroke={2.2} /> Add debt
             </button>
+            <button className="btn" onClick={() => setManagingTypes(true)}>Manage types</button>
           </div>
           {adding === "asset" && (
             <div style={{ marginTop: 24, textAlign: "left" }}>
-              <AddRowForm kind="asset" onSave={handleAddAsset} onCancel={() => setAdding(null)} />
+              <AddRowForm kind="asset" assetKinds={assetKinds} onCreateAssetType={handleCreateAssetType}
+                onSave={handleAddAsset} onCancel={() => setAdding(null)} />
             </div>
           )}
           {adding === "debt" && (
@@ -561,11 +780,12 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
           <div className="tools" style={{ gap: 12 }}>
             <div className="filterbar" style={{ padding: 0 }}>
               <div className="seg">
-                {[["all", "All"], ...Object.entries(PF_KINDS).map(([k, v]) => [k, v.name.split(" ")[0]])].map(([k, lab]) => (
+                {[["all", "All"], ...Object.entries(assetKinds).map(([k, v]) => [k, v.name])].map(([k, lab]) => (
                   <button key={k} className={filter === k ? "on" : ""} onClick={() => setFilter(k)}>{lab}</button>
                 ))}
               </div>
             </div>
+            <button className="btn ghost" onClick={() => setManagingTypes(true)}>Manage types</button>
             <button className="btn" onClick={() => setAdding(adding === "asset" ? null : "asset")}>
               <Icon name="plus" size={12} stroke={2.2} /> Add asset
             </button>
@@ -574,6 +794,8 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
 
         {adding === "asset" && (
           <AddRowForm kind="asset"
+            assetKinds={assetKinds}
+            onCreateAssetType={handleCreateAssetType}
             onSave={handleAddAsset}
             onCancel={() => setAdding(null)} />
         )}
@@ -588,7 +810,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         </div>
         <div className="pf-table">
           {filteredAssets.map((a) => {
-            const k = PF_KINDS[a.kind] || { color: "var(--ink-3)", name: a.kind, glyph: "·" };
+            const k = assetKinds[a.kind] || { color: "var(--ink-3)", name: a.kind, glyph: "·" };
             const series = getPortfolioItemSeries(histories, "asset", a.id);
             const firstValue = series[0] ?? a.value;
             const delta = a.value - firstValue;
@@ -727,6 +949,17 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
           onSave={handleRecordValuation}
           onDelete={handleDeleteValuation}
           onClose={() => setActiveValuation(null)}
+        />
+      )}
+      {managingTypes && (
+        <AssetTypeManager
+          assetTypes={assetTypes}
+          assets={assets}
+          busyId={busyId}
+          onCreate={handleCreateAssetType}
+          onUpdate={handleUpdateAssetType}
+          onDelete={handleDeleteAssetType}
+          onClose={() => setManagingTypes(false)}
         />
       )}
     </div>

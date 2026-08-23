@@ -1,8 +1,9 @@
 """Portfolio tracking — assets and liabilities per user.
 
-Three collections, all scoped to ``user_email``:
+Four collections, all scoped to ``user_email``:
 
 * ``portfolio_assets`` — name, kind, sub, value, base, ticker
+* ``portfolio_asset_types`` — user-defined asset class names and colors
 * ``portfolio_debts``  — name, kind, sub, value, base, apr, monthly
 * ``portfolio_valuations`` — dated values for each asset or debt
 
@@ -13,19 +14,25 @@ of deriving synthetic data from the ``base → value`` pair.
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timezone
 
 from bson import ObjectId
 from pymongo import ASCENDING
+from pymongo.errors import DuplicateKeyError
 
 from webapp.db import get_db
 
 _ASSETS_COLLECTION = "portfolio_assets"
+_ASSET_TYPES_COLLECTION = "portfolio_asset_types"
 _DEBTS_COLLECTION = "portfolio_debts"
 _VALUATIONS_COLLECTION = "portfolio_valuations"
 
 _ASSET_KINDS = {"cash", "equities", "bonds", "retirement", "property", "crypto"}
+_ASSET_KIND_NAMES = {"cash & savings", "equities", "bonds", "retirement", "property", "crypto"}
 _DEBT_KINDS = {"mortgage", "credit", "loan"}
+_CUSTOM_KIND_PREFIX = "custom_"
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def _now_iso() -> str:
@@ -52,6 +59,14 @@ def _serialize_valuation(doc: dict) -> dict:
     return out
 
 
+def _serialize_asset_type(doc: dict) -> dict:
+    return {
+        "id": f"{_CUSTOM_KIND_PREFIX}{doc['_id']}",
+        "name": doc["name"],
+        "color": doc["color"],
+    }
+
+
 def _ensure_indexes() -> None:
     db = get_db()
     for coll in (_ASSETS_COLLECTION, _DEBTS_COLLECTION):
@@ -59,6 +74,11 @@ def _ensure_indexes() -> None:
             [("user_email", ASCENDING), ("created_at", ASCENDING)],
             background=True,
         )
+    db[_ASSET_TYPES_COLLECTION].create_index(
+        [("user_email", ASCENDING), ("name_key", ASCENDING)],
+        unique=True,
+        background=True,
+    )
     db[_VALUATIONS_COLLECTION].create_index(
         [
             ("user_email", ASCENDING),
@@ -95,6 +115,40 @@ def _clean_str(raw: object, *, field: str, max_len: int = 200, required: bool = 
     if required and not s:
         raise ValueError(f"{field} is required")
     return s[:max_len]
+
+
+def _normalize_asset_type_name(raw: object) -> str:
+    name = _clean_str(raw, field="name", max_len=40)
+    if name.casefold() in _ASSET_KIND_NAMES:
+        raise ValueError("A built-in asset type already uses this name")
+    return name
+
+
+def _normalize_asset_type_color(raw: object) -> str:
+    color = _clean_str(raw or "#8B5CF6", field="color", max_len=7)
+    if not _HEX_COLOR.fullmatch(color):
+        raise ValueError("color must be a #RRGGBB hex value")
+    return color.upper()
+
+
+def _custom_asset_type_oid(type_id: str) -> ObjectId:
+    value = _clean_str(type_id, field="asset type id", max_len=32)
+    if not value.startswith(_CUSTOM_KIND_PREFIX):
+        raise ValueError("Invalid custom asset type id")
+    return _to_oid(value.removeprefix(_CUSTOM_KIND_PREFIX))
+
+
+def _validate_asset_kind(user_email: str, kind: str) -> str:
+    if kind in _ASSET_KINDS:
+        return kind
+    try:
+        oid = _custom_asset_type_oid(kind)
+    except ValueError as exc:
+        raise ValueError(f"Unknown asset kind '{kind}'") from exc
+    custom_type = get_db()[_ASSET_TYPES_COLLECTION].find_one({"_id": oid, "user_email": user_email})
+    if not custom_type:
+        raise ValueError(f"Unknown asset kind '{kind}'")
+    return kind
 
 
 def _normalize_item_type(item_type: str) -> str:
@@ -272,14 +326,84 @@ def list_portfolio(user_email: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Custom asset types
+# ---------------------------------------------------------------------------
+def list_asset_types(user_email: str) -> list[dict]:
+    _ensure_indexes()
+    docs = get_db()[_ASSET_TYPES_COLLECTION].find(
+        {"user_email": user_email},
+        sort=[("name_key", ASCENDING)],
+    )
+    return [_serialize_asset_type(doc) for doc in docs]
+
+
+def create_asset_type(user_email: str, payload: dict) -> dict:
+    _ensure_indexes()
+    name = _normalize_asset_type_name(payload.get("name"))
+    now = _now_iso()
+    doc = {
+        "user_email": user_email,
+        "name": name,
+        "name_key": name.casefold(),
+        "color": _normalize_asset_type_color(payload.get("color")),
+        "created_at": now,
+        "updated_at": now,
+    }
+    try:
+        result = get_db()[_ASSET_TYPES_COLLECTION].insert_one(doc)
+    except DuplicateKeyError as exc:
+        raise ValueError("An asset type with this name already exists") from exc
+    doc["_id"] = result.inserted_id
+    return _serialize_asset_type(doc)
+
+
+def update_asset_type(user_email: str, type_id: str, payload: dict) -> dict:
+    _ensure_indexes()
+    oid = _custom_asset_type_oid(type_id)
+    set_doc: dict = {}
+    if "name" in payload:
+        name = _normalize_asset_type_name(payload["name"])
+        set_doc.update({"name": name, "name_key": name.casefold()})
+    if "color" in payload:
+        set_doc["color"] = _normalize_asset_type_color(payload["color"])
+    if not set_doc:
+        raise ValueError("Nothing to update")
+    set_doc["updated_at"] = _now_iso()
+    try:
+        result = get_db()[_ASSET_TYPES_COLLECTION].find_one_and_update(
+            {"_id": oid, "user_email": user_email},
+            {"$set": set_doc},
+            return_document=True,
+        )
+    except DuplicateKeyError as exc:
+        raise ValueError("An asset type with this name already exists") from exc
+    if not result:
+        raise ValueError("Asset type not found")
+    return _serialize_asset_type(result)
+
+
+def delete_asset_type(user_email: str, type_id: str) -> dict:
+    _ensure_indexes()
+    oid = _custom_asset_type_oid(type_id)
+    collection = get_db()[_ASSET_TYPES_COLLECTION]
+    if not collection.find_one({"_id": oid, "user_email": user_email}):
+        raise ValueError("Asset type not found")
+    if get_db()[_ASSETS_COLLECTION].count_documents({"user_email": user_email, "kind": type_id}, limit=1):
+        raise ValueError("An asset still uses this type")
+    result = collection.delete_one({"_id": oid, "user_email": user_email})
+    if result.deleted_count == 0:
+        raise ValueError("Asset type not found")
+    return {"deleted": 1}
+
+
+# ---------------------------------------------------------------------------
 # Assets
 # ---------------------------------------------------------------------------
 def create_asset(user_email: str, payload: dict) -> dict:
     _ensure_indexes()
     name = _clean_str(payload.get("name"), field="name")
     kind = _clean_str(payload.get("kind"), field="kind", max_len=32)
-    if kind not in _ASSET_KINDS:
-        raise ValueError(f"Unknown asset kind '{kind}'")
+    _validate_asset_kind(user_email, kind)
     value = _coerce_value(payload.get("value"), field="value")
     if value < 0:
         raise ValueError("value must be zero or greater")
@@ -319,8 +443,7 @@ def update_asset(user_email: str, asset_id: str, payload: dict) -> dict:
         set_doc["name"] = _clean_str(payload["name"], field="name")
     if "kind" in payload:
         kind = _clean_str(payload["kind"], field="kind", max_len=32)
-        if kind not in _ASSET_KINDS:
-            raise ValueError(f"Unknown asset kind '{kind}'")
+        _validate_asset_kind(user_email, kind)
         set_doc["kind"] = kind
     if "sub" in payload:
         set_doc["sub"] = _clean_str(payload["sub"], field="sub", required=False) or "Manual entry"

@@ -13,6 +13,41 @@ function jsonResponse(payload) {
   return { ok: true, status: 200, json: async () => payload };
 }
 
+test("portfolio custom asset types support list and CRUD requests", async () => {
+  const requests = [];
+  global.fetch = async (path, options = {}) => {
+    requests.push({ path, options });
+    if (!options.method) {
+      return jsonResponse({ asset_types: [{ id: "custom_cpf", name: "CPF", color: "#8B5CF6" }] });
+    }
+    if (options.method === "POST") {
+      return jsonResponse({ asset_type: { id: "custom_cpf", name: "CPF", color: "#8B5CF6" } });
+    }
+    if (options.method === "PATCH") {
+      return jsonResponse({ asset_type: { id: "custom_cpf", name: "CPF OA", color: "#0F766E" } });
+    }
+    return jsonResponse({ deleted: 1 });
+  };
+
+  const listed = await apiFetchPortfolioAssetTypes();
+  const created = await apiCreatePortfolioAssetType({ name: "CPF", color: "#8B5CF6" });
+  const updated = await apiUpdatePortfolioAssetType("custom_cpf", { name: "CPF OA", color: "#0F766E" });
+  await apiDeletePortfolioAssetType("custom_cpf");
+
+  assert.deepEqual(listed, [{ id: "custom_cpf", name: "CPF", color: "#8B5CF6" }]);
+  assert.deepEqual(created, { id: "custom_cpf", name: "CPF", color: "#8B5CF6" });
+  assert.deepEqual(updated, { id: "custom_cpf", name: "CPF OA", color: "#0F766E" });
+  assert.deepEqual(
+    requests.map(({ path, options }) => [path, options.method || "GET"]),
+    [
+      ["/api/portfolio/asset-types", "GET"],
+      ["/api/portfolio/asset-types", "POST"],
+      ["/api/portfolio/asset-types/custom_cpf", "PATCH"],
+      ["/api/portfolio/asset-types/custom_cpf", "DELETE"],
+    ],
+  );
+});
+
 test("portfolio valuation history request includes item type and id", async () => {
   let request;
   global.fetch = async (path, options) => {

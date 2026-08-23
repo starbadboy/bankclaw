@@ -372,6 +372,27 @@ async function _portfolioMutate(path, method, body) {
   return res.json();
 }
 
+async function apiFetchPortfolioAssetTypes() {
+  const res = await _fetch("/api/portfolio/asset-types");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load asset types");
+  }
+  const data = await res.json();
+  return data.asset_types || [];
+}
+async function apiCreatePortfolioAssetType(payload) {
+  const data = await _portfolioMutate("/api/portfolio/asset-types", "POST", payload);
+  return data.asset_type;
+}
+async function apiUpdatePortfolioAssetType(id, payload) {
+  const data = await _portfolioMutate(`/api/portfolio/asset-types/${encodeURIComponent(id)}`, "PATCH", payload);
+  return data.asset_type;
+}
+async function apiDeletePortfolioAssetType(id) {
+  return _portfolioMutate(`/api/portfolio/asset-types/${encodeURIComponent(id)}`, "DELETE");
+}
+
 async function apiCreatePortfolioAsset(payload) {
   const data = await _portfolioMutate("/api/portfolio/assets", "POST", payload);
   return data.asset;
@@ -436,6 +457,8 @@ Object.assign(window, {
   apiFetchCategories, apiAddCategory, apiDeleteCategory, apiRenameCategory,
   apiFetchProfiles, apiCreateProfile, apiUpdateProfile, apiDeleteProfile,
   apiFetchPortfolio,
+  apiFetchPortfolioAssetTypes, apiCreatePortfolioAssetType,
+  apiUpdatePortfolioAssetType, apiDeletePortfolioAssetType,
   apiCreatePortfolioAsset, apiUpdatePortfolioAsset, apiDeletePortfolioAsset,
   apiCreatePortfolioDebt, apiUpdatePortfolioDebt, apiDeletePortfolioDebt,
   apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation,
