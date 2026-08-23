@@ -623,6 +623,11 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const netUp = netDelta >= 0;
 
   const filteredAssets = filter === "all" ? assets : assets.filter((a) => a.kind === filter);
+  const filteredAssetTotal = filteredAssets.reduce((sum, asset) => sum + asset.value, 0);
+  const assetSummaryLabel = filter === "all"
+    ? "Total assets"
+    : `${assetKinds[filter]?.name || filter} total`;
+  const debtTotal = debts.reduce((sum, debt) => sum + debt.value, 0);
 
   const isEmpty = !loading && assets.length === 0 && debts.length === 0;
   const activeItem = activeValuation
@@ -851,6 +856,13 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
             );
           })}
         </div>
+        <div className="pf-table-summary">
+          <div className="pf-table-summary-label">
+            <strong>{assetSummaryLabel}</strong>
+            <span>{filteredAssets.length} {filteredAssets.length === 1 ? "asset" : "assets"}</span>
+          </div>
+          <div className="pf-table-summary-value asset">{fmtSGD(filteredAssetTotal, privacy)}</div>
+        </div>
       </div>
 
       <div style={{ height: 24 }} />
@@ -919,6 +931,13 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
               </div>
             );
           })}
+        </div>
+        <div className="pf-table-summary">
+          <div className="pf-table-summary-label">
+            <strong>Total debts</strong>
+            <span>{debts.length} {debts.length === 1 ? "liability" : "liabilities"}</span>
+          </div>
+          <div className="pf-table-summary-value debt">{fmtSGD(-debtTotal, privacy)}</div>
         </div>
       </div>
 

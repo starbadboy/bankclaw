@@ -159,7 +159,13 @@ function TransactionsPage({ transactions, privacy, query, onOpenTx, initialBank,
                         {fmtDate(t.date)}
                       </div>
                       <div className="cell desc">
-                        <div>{t.description}</div>
+                        <div
+                          className="transaction-title"
+                          title={t.description}
+                          aria-label={t.description}
+                        >
+                          {t.description}
+                        </div>
                         <div className="sub"><BankBadge bankId={t.bank} /> · {t.reference}</div>
                       </div>
                       <div className="cell num" style={{ justifyContent: "flex-end", color: "var(--ink-3)", fontSize: 12 }}>

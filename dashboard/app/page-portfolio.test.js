@@ -34,3 +34,12 @@ test("portfolio page prevents deleting a custom type that is in use", () => {
   assert.match(source, /assets\.filter\(\(asset\) => asset\.kind === assetType\.id\)/);
   assert.match(source, /inUseCount > 0/);
 });
+
+test("portfolio table summaries total the visible assets and all debts", () => {
+  assert.match(source, /const filteredAssetTotal = filteredAssets\.reduce/);
+  assert.match(source, /const debtTotal = debts\.reduce/);
+  assert.match(source, /Total assets/);
+  assert.match(source, /Total debts/);
+  assert.match(source, /fmtSGD\(filteredAssetTotal, privacy\)/);
+  assert.match(source, /fmtSGD\(-debtTotal, privacy\)/);
+});

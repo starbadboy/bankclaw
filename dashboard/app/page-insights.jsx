@@ -58,6 +58,7 @@ function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
   const yAt = (v) => padTop + (1 - v / maxVal) * innerH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * maxVal);
   const fmtTick = (t) => t >= 1000 ? `${(t / 1000).toFixed(t >= 10000 ? 0 : 1)}k` : Math.round(t).toString();
+  const selectedTotal = series.reduce((total, s) => total + (s.values[hoverIdx] || 0), 0);
 
   const handleMove = (e) => {
     if (months.length === 0) return;
@@ -82,6 +83,14 @@ function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
           <text key={m.key} x={xAt(i)} y={height - 8} fontSize="10" textAnchor="middle" fill="var(--ink-4)">{m.label}</text>
         ))}
         {series.map((s) => {
+          const monthlyAverage = s.values.reduce((total, value) => total + value, 0) / Math.max(1, months.length);
+          return (
+            <line key={`average-${s.id}`} x1={padL} x2={w - padR}
+              y1={yAt(monthlyAverage)} y2={yAt(monthlyAverage)}
+              stroke={s.color} strokeWidth="1" strokeOpacity="0.58" strokeDasharray="5 5" />
+          );
+        })}
+        {series.map((s) => {
           const path = s.values.map((v, i) => `${i === 0 ? "M" : "L"} ${xAt(i)} ${yAt(v)}`).join(" ");
           return (
             <g key={s.id}>
@@ -99,21 +108,36 @@ function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
       {hoverIdx != null && months[hoverIdx] && series.length > 0 && (
         <div style={{
           position: "absolute",
-          left: Math.min(Math.max(8, xAt(hoverIdx) + 10), w - 180),
+          left: Math.min(Math.max(8, xAt(hoverIdx) + 10), w - 220),
           top: 8, background: "var(--paper)", border: "1px solid var(--rule)",
-          borderRadius: 4, padding: "8px 10px", fontSize: 11, minWidth: 160,
+          borderRadius: 4, padding: "8px 10px", fontSize: 11, minWidth: 200,
           boxShadow: "0 2px 6px rgba(0,0,0,0.06)", pointerEvents: "none",
         }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>{months[hoverIdx].label}</div>
-          {series.map((s) => (
-            <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, marginTop: 2 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, background: s.color, borderRadius: 2, display: "inline-block" }}></span>
-                {s.name}
-              </span>
-              <span className="mono">{fmtSGD(s.values[hoverIdx], privacy).replace("−", "")}</span>
-            </div>
-          ))}
+          {series.map((s) => {
+            const monthlyAverage = s.values.reduce((total, value) => total + value, 0) / Math.max(1, months.length);
+            return (
+              <div key={s.id} style={{ marginTop: 5 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, background: s.color, borderRadius: 2, display: "inline-block" }}></span>
+                    {s.name}
+                  </span>
+                  <span className="mono">{fmtSGD(s.values[hoverIdx], privacy).replace("−", "")}</span>
+                </div>
+                <div style={{ marginLeft: 14, marginTop: 1, color: s.color, opacity: 0.78, fontSize: 9.5 }}>
+                  Monthly avg · {fmtSGD(monthlyAverage, privacy).replace("−", "")}
+                </div>
+              </div>
+            );
+          })}
+          <div style={{
+            display: "flex", justifyContent: "space-between", gap: 12,
+            marginTop: 8, paddingTop: 7, borderTop: "1px solid var(--rule)", fontWeight: 600,
+          }}>
+            <span>Selected total</span>
+            <span className="mono">{fmtSGD(selectedTotal, privacy).replace("−", "")}</span>
+          </div>
         </div>
       )}
     </div>
