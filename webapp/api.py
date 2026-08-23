@@ -48,7 +48,10 @@ try:
         create_debt,
         delete_asset,
         delete_debt,
+        delete_valuation,
         list_portfolio,
+        list_valuations,
+        record_valuation,
         update_asset,
         update_debt,
     )
@@ -465,6 +468,53 @@ async def remove_debt(debt_id: str, user: str = Depends(_current_user)) -> dict:
         raise HTTPException(status_code=503, detail="Database not available")
     try:
         return delete_debt(user, debt_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/portfolio/{item_type}/{item_id}/valuations")
+async def get_portfolio_valuations(
+    item_type: str,
+    item_id: str,
+    user: str = Depends(_current_user),
+) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        valuations = list_valuations(user, item_type, item_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"valuations": valuations}
+
+
+@app.post("/api/portfolio/{item_type}/{item_id}/valuations")
+async def add_portfolio_valuation(
+    item_type: str,
+    item_id: str,
+    request: Request,
+    user: str = Depends(_current_user),
+) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        valuation = record_valuation(user, item_type, item_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"valuation": valuation}
+
+
+@app.delete("/api/portfolio/{item_type}/{item_id}/valuations/{as_of_date}")
+async def remove_portfolio_valuation(
+    item_type: str,
+    item_id: str,
+    as_of_date: str,
+    user: str = Depends(_current_user),
+) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        return delete_valuation(user, item_type, item_id, as_of_date)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

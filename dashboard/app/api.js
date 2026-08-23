@@ -394,6 +394,25 @@ async function apiUpdatePortfolioDebt(id, payload) {
 async function apiDeletePortfolioDebt(id) {
   return _portfolioMutate(`/api/portfolio/debts/${encodeURIComponent(id)}`, "DELETE");
 }
+async function apiFetchPortfolioValuations(itemType, id) {
+  const path = `/api/portfolio/${encodeURIComponent(itemType)}/${encodeURIComponent(id)}/valuations`;
+  const res = await _fetch(path);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load valuation history");
+  }
+  const data = await res.json();
+  return data.valuations || [];
+}
+async function apiRecordPortfolioValuation(itemType, id, payload) {
+  const path = `/api/portfolio/${encodeURIComponent(itemType)}/${encodeURIComponent(id)}/valuations`;
+  const data = await _portfolioMutate(path, "POST", payload);
+  return data.valuation;
+}
+async function apiDeletePortfolioValuation(itemType, id, asOfDate) {
+  const path = `/api/portfolio/${encodeURIComponent(itemType)}/${encodeURIComponent(id)}/valuations/${encodeURIComponent(asOfDate)}`;
+  return _portfolioMutate(path, "DELETE");
+}
 
 // Resolve a category id/name to display info. Works for built-ins (by id)
 // and for custom categories (by raw name) via window.ALL_CATEGORIES.
@@ -419,6 +438,7 @@ Object.assign(window, {
   apiFetchPortfolio,
   apiCreatePortfolioAsset, apiUpdatePortfolioAsset, apiDeletePortfolioAsset,
   apiCreatePortfolioDebt, apiUpdatePortfolioDebt, apiDeletePortfolioDebt,
+  apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation,
   apiAiReview,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,

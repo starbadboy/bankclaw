@@ -68,6 +68,7 @@ Statement Sensei converts bank statement PDFs to CSVs using the [monopoly](https
 6. For database/repository-level testing, use integration test project. For function-level testing, use unit test project. For user story spec end-to-end tests, use e2e test project. Always check existing test structure and patterns before creating new tests.
 7. If a task requires modifying the database (creating/updating stored procedures, schemas, etc.), stop and ask the user to help, then continue.
 8. When implementing authentication/session behavior changes, verify the behavior consistently across all pages (not just the login or entry page) and add tests covering multi-page behavior.
+9. Before declaring a user-facing dashboard change complete, run a real browser smoke test for the affected workflow. If browser testing is blocked, state that limitation prominently instead of presenting the work as fully verified.
 
 ## Domain Context
 

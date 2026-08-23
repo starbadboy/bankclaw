@@ -1024,6 +1024,7 @@ body {
   grid-template-columns: 2.2fr 0.7fr 0.9fr 110px 90px 1.1fr;
 }
 .pf-row:hover { background: var(--paper-2); }
+.pf-row.selected { background: color-mix(in oklch, var(--accent) 7%, var(--paper)); }
 .pf-cell {
   padding: 14px 24px;
   display: flex; align-items: center;
@@ -1076,7 +1077,7 @@ body {
   padding: 22px 24px;
 }
 .pf-add-grid {
-  display: grid; grid-template-columns: 2fr 1fr 1fr 2fr; gap: 14px;
+  display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr 1.5fr; gap: 14px;
 }
 .pf-add-grid label {
   display: flex; flex-direction: column; gap: 6px;
@@ -1127,3 +1128,106 @@ body {
 .pf-row:hover .pf-row-del { opacity: 1; }
 .pf-row-del:hover { color: var(--debit); border-color: var(--debit); }
 .pf-row-del:disabled { opacity: 0.4; cursor: progress; }
+
+.pf-row-history {
+  margin-left: 10px;
+  width: 24px; height: 24px;
+  border: 1px solid var(--rule); border-radius: 999px;
+  background: var(--paper);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink-3); cursor: pointer; flex-shrink: 0;
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.pf-row-history:hover {
+  color: var(--accent); border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 6%, var(--paper));
+}
+.pf-chart-empty {
+  display: grid; place-items: center;
+  border: 1px dashed var(--rule); color: var(--ink-4);
+  font-size: 12px; letter-spacing: 0.02em;
+}
+
+.pf-valuation-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  display: flex; justify-content: flex-end;
+  background: oklch(0.1 0.01 60 / 0.32);
+  backdrop-filter: blur(2px);
+}
+.pf-valuation-panel {
+  width: min(480px, 94vw); height: 100%; overflow-y: auto;
+  background: var(--surface); border-left: 1px solid var(--rule);
+  box-shadow: -24px 0 60px oklch(0.1 0.01 60 / 0.16);
+  padding: 30px;
+  animation: pf-panel-in 180ms ease-out;
+}
+@keyframes pf-panel-in {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.pf-valuation-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 20px;
+  padding-bottom: 22px; border-bottom: 1px solid var(--rule);
+}
+.pf-valuation-head h2 {
+  margin: 4px 0 2px; font: 500 30px/1.1 "Bodoni Moda", serif;
+  letter-spacing: -0.025em;
+}
+.pf-valuation-head p { margin: 8px 0 0; color: var(--ink-3); font-size: 12px; max-width: 350px; }
+.pf-panel-close {
+  width: 32px; height: 32px; flex-shrink: 0;
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--rule); border-radius: 999px;
+  background: var(--paper); color: var(--ink-3);
+}
+.pf-panel-close:hover { color: var(--accent); border-color: var(--accent); }
+.pf-valuation-form {
+  display: grid; grid-template-columns: 1fr 1.25fr; gap: 12px;
+  padding: 22px 0; border-bottom: 1px solid var(--rule);
+}
+.pf-valuation-form label {
+  display: flex; flex-direction: column; gap: 6px;
+  color: var(--ink-4); font-size: 9.5px; font-weight: 500;
+  font-family: "IBM Plex Sans", sans-serif; letter-spacing: 0.2em; text-transform: uppercase;
+}
+.pf-valuation-form input {
+  width: 100%; padding: 10px 11px;
+  border: 1px solid var(--rule); border-radius: 2px;
+  background: var(--paper); color: var(--ink); outline: none;
+  font: 400 13px "IBM Plex Sans", sans-serif;
+  letter-spacing: normal; text-transform: none;
+}
+.pf-valuation-form input:focus { border-color: var(--accent); }
+.pf-valuation-form .btn { grid-column: 1 / -1; justify-content: center; }
+.pf-valuation-list-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 22px 0 10px; color: var(--ink-4);
+  font-size: 9.5px; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase;
+}
+.pf-valuation-list { border-top: 1px solid var(--rule); }
+.pf-valuation-entry {
+  display: grid; grid-template-columns: 1fr auto; align-items: center;
+  border-bottom: 1px solid var(--rule);
+}
+.pf-valuation-edit {
+  min-width: 0; padding: 14px 8px 14px 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  border: 0; background: transparent; color: var(--ink); cursor: pointer; text-align: left;
+}
+.pf-valuation-edit span { color: var(--ink-3); font-size: 11px; }
+.pf-valuation-edit strong { font: 500 19px "Bodoni Moda", serif; font-variant-numeric: tabular-nums; }
+.pf-valuation-edit:hover strong { color: var(--accent); }
+.pf-valuation-delete {
+  width: 24px; height: 24px; display: grid; place-items: center;
+  border: 1px solid var(--rule); border-radius: 999px;
+  background: var(--paper); color: var(--ink-4); cursor: pointer;
+}
+.pf-valuation-delete:hover:not(:disabled) { color: var(--debit); border-color: var(--debit); }
+.pf-valuation-delete:disabled { opacity: 0.3; cursor: not-allowed; }
+.pf-valuation-hint { margin-top: 14px; line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .pf-valuation-panel { width: 100%; padding: 22px; }
+  .pf-valuation-form { grid-template-columns: 1fr; }
+  .pf-valuation-form .btn { grid-column: auto; }
+}

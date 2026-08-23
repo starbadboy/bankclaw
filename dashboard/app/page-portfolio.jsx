@@ -16,32 +16,11 @@ const PF_DEBT_KINDS = {
   loan:     { name: "Loan" },
 };
 
-/* Build a 12-month net worth trend with a few small dips */
-function buildNetWorthHistory(currentNet) {
-  const months = ["May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar","Apr"];
-  const seedRng = mulberry32(7);
-  const out = [];
-  let v = currentNet;
-  for (let i = months.length - 1; i >= 0; i--) {
-    out.unshift({ label: months[i], value: v });
-    const drift = 0.018 + seedRng() * 0.014;
-    const wobble = (seedRng() - 0.5) * 0.022;
-    v = v / (1 + drift + wobble);
-  }
-  return out;
-}
-
-/* Sparkline series (12 monthly points) per asset/debt */
-function buildSeries(start, end, n = 12, jitter = 0.04) {
-  const out = [];
-  const seedRng = mulberry32(Math.round(end * 1000) | 0);
-  for (let i = 0; i < n; i++) {
-    const t = i / (n - 1);
-    const base = start + (end - start) * t;
-    const j = (seedRng() - 0.5) * jitter * Math.max(start, end);
-    out.push(Math.max(0, base + j));
-  }
-  return out;
+function portfolioTodayIso() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 /* ============ Mini sparkline (assets/debts) ============ */
@@ -72,10 +51,22 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
     ro.observe(wrapRef.current);
     return () => ro.disconnect();
   }, []);
+  if (!data || data.length === 0) {
+    return (
+      <div className="pf-chart-empty" style={{ height }}>
+        Record a dated value to begin the net worth trend.
+      </div>
+    );
+  }
   const padX = 24, padY = 28;
-  const max = Math.max(...data.map((d) => d.value)) * 1.06;
-  const min = Math.min(...data.map((d) => d.value)) * 0.96;
-  const xAt = (i) => padX + (i * (w - padX * 2)) / Math.max(1, data.length - 1);
+  const rawMax = Math.max(...data.map((d) => d.value));
+  const rawMin = Math.min(...data.map((d) => d.value));
+  const padding = Math.max(1, rawMax - rawMin, Math.abs(rawMax) * 0.08, Math.abs(rawMin) * 0.08);
+  const max = rawMax + padding;
+  const min = rawMin - padding;
+  const xAt = (i) => data.length === 1
+    ? w / 2
+    : padX + (i * (w - padX * 2)) / (data.length - 1);
   const yAt = (v) => padY + (1 - (v - min) / (max - min)) * (height - padY * 2);
   const linePath = data.map((d, i) => `${i ? "L" : "M"} ${xAt(i)} ${yAt(d.value)}`).join(" ");
   const areaPath = `${linePath} L ${xAt(data.length - 1)} ${height - padY} L ${xAt(0)} ${height - padY} Z`;
@@ -114,7 +105,7 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
         ))}
         <path d={areaPath} fill="url(#nw-grad)" />
         <path d={linePath} fill="none" stroke="var(--accent)" strokeWidth="1.6" />
-        {[0, data.length - 1].map((i) => (
+        {[...new Set([0, data.length - 1])].map((i) => (
           <circle key={i} cx={xAt(i)} cy={yAt(data[i].value)} r="3.5"
             fill="var(--paper)" stroke="var(--accent)" strokeWidth="1.5" />
         ))}
@@ -135,17 +126,19 @@ function AddRowForm({ kind, onSave, onCancel }) {
   const [type, setType] = useStatePF(kind === "asset" ? "cash" : "credit");
   const [value, setValue] = useStatePF("");
   const [sub, setSub] = useStatePF("");
+  const [asOfDate, setAsOfDate] = useStatePF(portfolioTodayIso());
   const types = kind === "asset" ? Object.entries(PF_KINDS) : Object.entries(PF_DEBT_KINDS);
   const submit = () => {
     const v = parseFloat(String(value).replace(/[, ]/g, ""));
-    if (!name.trim() || !isFinite(v)) return;
+    if (!name.trim() || !isFinite(v) || v < 0 || !asOfDate) return;
     onSave({
       id: `${kind === "asset" ? "a" : "d"}_${Date.now().toString(36)}`,
       name: name.trim(),
       kind: type,
       sub: sub.trim() || "Manual entry",
       value: v,
-      base: v * 0.98,
+      base: v,
+      as_of_date: asOfDate,
     });
   };
   return (
@@ -166,6 +159,10 @@ function AddRowForm({ kind, onSave, onCancel }) {
           <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" inputMode="decimal" />
         </label>
         <label>
+          <span>Valuation date</span>
+          <input type="date" max={portfolioTodayIso()} value={asOfDate} onChange={(e) => setAsOfDate(e.target.value)} />
+        </label>
+        <label>
           <span>Subtitle <em>(optional)</em></span>
           <input value={sub} onChange={(e) => setSub(e.target.value)} placeholder="e.g. 24 units · NASDAQ" />
         </label>
@@ -180,6 +177,85 @@ function AddRowForm({ kind, onSave, onCancel }) {
   );
 }
 
+function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClose }) {
+  const [asOfDate, setAsOfDate] = useStatePF(portfolioTodayIso());
+  const [value, setValue] = useStatePF(String(item.value ?? ""));
+  const orderedHistory = [...(history || [])].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date));
+
+  useEffectPF(() => {
+    setAsOfDate(portfolioTodayIso());
+    setValue(String(item.value ?? ""));
+  }, [item.id]);
+
+  const submit = (event) => {
+    event.preventDefault();
+    const parsed = parseFloat(String(value).replace(/[, ]/g, ""));
+    if (!asOfDate || !isFinite(parsed) || parsed < 0) return;
+    onSave({ as_of_date: asOfDate, value: parsed });
+  };
+  const editEntry = (entry) => {
+    setAsOfDate(entry.as_of_date);
+    setValue(String(entry.value));
+  };
+
+  return (
+    <div className="pf-valuation-overlay" role="presentation" onMouseDown={onClose}>
+      <aside className="pf-valuation-panel" role="dialog" aria-modal="true" aria-label={`Valuation history for ${item.name}`}
+        onMouseDown={(event) => event.stopPropagation()}>
+        <div className="pf-valuation-head">
+          <div>
+            <div className="tag">{itemType === "asset" ? "Asset valuation" : "Debt balance"}</div>
+            <h2>{item.name}</h2>
+            <p>Record the value on a specific date. Saving the same date updates that entry.</p>
+          </div>
+          <button className="pf-panel-close" onClick={onClose} aria-label="Close valuation history">
+            <Icon name="close" size={16} stroke={1.8} />
+          </button>
+        </div>
+
+        <form className="pf-valuation-form" onSubmit={submit}>
+          <label>
+            <span>Date</span>
+            <input type="date" max={portfolioTodayIso()} value={asOfDate}
+              onChange={(event) => setAsOfDate(event.target.value)} required />
+          </label>
+          <label>
+            <span>{itemType === "asset" ? "Value (S$)" : "Outstanding balance (S$)"}</span>
+            <input value={value} onChange={(event) => setValue(event.target.value)}
+              inputMode="decimal" placeholder="0.00" required />
+          </label>
+          <button className="btn primary" type="submit" disabled={busy}>
+            <Icon name="check" size={12} stroke={2} /> {busy ? "Saving…" : "Record value"}
+          </button>
+        </form>
+
+        <div className="pf-valuation-list-head">
+          <span>History</span>
+          <span>{orderedHistory.length} {orderedHistory.length === 1 ? "entry" : "entries"}</span>
+        </div>
+        <div className="pf-valuation-list">
+          {orderedHistory.map((entry) => (
+            <div className="pf-valuation-entry" key={entry.as_of_date}>
+              <button className="pf-valuation-edit" onClick={() => editEntry(entry)}>
+                <span className="mono">{entry.as_of_date}</span>
+                <strong>{itemType === "debt" ? "−" : ""}{fmtSGD(entry.value, false)}</strong>
+              </button>
+              <button className="pf-valuation-delete" title="Delete this dated value"
+                disabled={busy || orderedHistory.length <= 1}
+                onClick={() => onDelete(entry.as_of_date)}>
+                <Icon name="close" size={11} stroke={2} />
+              </button>
+            </div>
+          ))}
+        </div>
+        {orderedHistory.length <= 1 && (
+          <div className="hint pf-valuation-hint">Keep at least one value so this holding always has a current balance.</div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 /* ============ Portfolio Page ============ */
 function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [assets, setAssets] = useStatePF([]);
@@ -189,16 +265,40 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [adding, setAdding] = useStatePF(null);
   const [filter, setFilter] = useStatePF("all");
   const [busyId, setBusyId] = useStatePF(null);
+  const [histories, setHistories] = useStatePF({});
+  const [activeValuation, setActiveValuation] = useStatePF(null);
+
+  const fetchPortfolioData = async () => {
+    const data = await apiFetchPortfolio();
+    const items = [
+      ...data.assets.map((item) => ({ itemType: "asset", item })),
+      ...data.debts.map((item) => ({ itemType: "debt", item })),
+    ];
+    const entries = await Promise.all(items.map(async ({ itemType, item }) => [
+      `${itemType}:${item.id}`,
+      await apiFetchPortfolioValuations(itemType, item.id),
+    ]));
+    return { ...data, histories: Object.fromEntries(entries) };
+  };
+
+  const applyPortfolioData = (data) => {
+    setAssets(data.assets);
+    setDebts(data.debts);
+    setHistories(data.histories);
+  };
+
+  const refreshPortfolio = async () => {
+    const data = await fetchPortfolioData();
+    applyPortfolioData(data);
+    return data;
+  };
 
   useEffectPF(() => {
     let cancelled = false;
     (async () => {
       try {
-        const data = await apiFetchPortfolio();
-        if (!cancelled) {
-          setAssets(data.assets);
-          setDebts(data.debts);
-        }
+        const data = await fetchPortfolioData();
+        if (!cancelled) applyPortfolioData(data);
       } catch (e) {
         if (!cancelled) setErr(e.message || "Failed to load portfolio");
       } finally {
@@ -210,20 +310,21 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
 
   const handleAddAsset = async (row) => {
     try {
-      const created = await apiCreatePortfolioAsset({
+      await apiCreatePortfolioAsset({
         name: row.name, kind: row.kind, sub: row.sub, value: row.value, base: row.base,
+        as_of_date: row.as_of_date,
       });
-      setAssets((cur) => [...cur, created]);
+      await refreshPortfolio();
       setAdding(null);
     } catch (e) { setErr(e.message || "Failed to add asset"); }
   };
   const handleAddDebt = async (row) => {
     try {
-      const created = await apiCreatePortfolioDebt({
+      await apiCreatePortfolioDebt({
         name: row.name, kind: row.kind, sub: row.sub, value: row.value, base: row.base,
-        apr: 0, monthly: 0,
+        apr: 0, monthly: 0, as_of_date: row.as_of_date,
       });
-      setDebts((cur) => [...cur, created]);
+      await refreshPortfolio();
       setAdding(null);
     } catch (e) { setErr(e.message || "Failed to add debt"); }
   };
@@ -232,6 +333,12 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     try {
       await apiDeletePortfolioAsset(id);
       setAssets((cur) => cur.filter((a) => a.id !== id));
+      setHistories((cur) => {
+        const next = { ...cur };
+        delete next[`asset:${id}`];
+        return next;
+      });
+      if (activeValuation?.itemType === "asset" && activeValuation.itemId === id) setActiveValuation(null);
     } catch (e) { setErr(e.message || "Failed to delete asset"); }
     finally { setBusyId(null); }
   };
@@ -240,16 +347,44 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     try {
       await apiDeletePortfolioDebt(id);
       setDebts((cur) => cur.filter((d) => d.id !== id));
+      setHistories((cur) => {
+        const next = { ...cur };
+        delete next[`debt:${id}`];
+        return next;
+      });
+      if (activeValuation?.itemType === "debt" && activeValuation.itemId === id) setActiveValuation(null);
     } catch (e) { setErr(e.message || "Failed to delete debt"); }
+    finally { setBusyId(null); }
+  };
+
+  const handleRecordValuation = async (payload) => {
+    if (!activeValuation) return;
+    const { itemType, itemId } = activeValuation;
+    setBusyId(`valuation:${itemType}:${itemId}`);
+    setErr("");
+    try {
+      await apiRecordPortfolioValuation(itemType, itemId, payload);
+      await refreshPortfolio();
+    } catch (e) { setErr(e.message || "Failed to record value"); }
+    finally { setBusyId(null); }
+  };
+
+  const handleDeleteValuation = async (asOfDate) => {
+    if (!activeValuation) return;
+    const { itemType, itemId } = activeValuation;
+    setBusyId(`valuation:${itemType}:${itemId}`);
+    setErr("");
+    try {
+      await apiDeletePortfolioValuation(itemType, itemId, asOfDate);
+      await refreshPortfolio();
+    } catch (e) { setErr(e.message || "Failed to delete dated value"); }
     finally { setBusyId(null); }
   };
 
   const totals = useMemoPF(() => {
     const A = assets.reduce((s, x) => s + x.value, 0);
     const D = debts.reduce((s, x) => s + x.value, 0);
-    const Abase = assets.reduce((s, x) => s + x.base, 0);
-    const Dbase = debts.reduce((s, x) => s + x.base, 0);
-    return { A, D, net: A - D, aDelta: A - Abase, dDelta: D - Dbase, netDelta: (A - D) - (Abase - Dbase) };
+    return { A, D, net: A - D };
   }, [assets, debts]);
 
   const allocation = useMemoPF(() => {
@@ -260,15 +395,22 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     })).sort((a, b) => b.value - a.value);
   }, [assets]);
 
-  const history = useMemoPF(() => buildNetWorthHistory(totals.net), [totals.net]);
+  const history = useMemoPF(
+    () => buildPortfolioNetWorthHistory(assets, debts, histories, { months: 12 }),
+    [assets, debts, histories],
+  );
+  const netDelta = history.length > 1 ? history[history.length - 1].value - history[0].value : 0;
 
-  const dollars = Math.floor(Math.max(0, totals.net)).toLocaleString("en-SG");
+  const dollars = Math.floor(Math.abs(totals.net)).toLocaleString("en-SG");
   const cents = (Math.abs(totals.net) - Math.floor(Math.abs(totals.net))).toFixed(2).slice(1);
-  const netUp = totals.netDelta >= 0;
+  const netUp = netDelta >= 0;
 
   const filteredAssets = filter === "all" ? assets : assets.filter((a) => a.kind === filter);
 
   const isEmpty = !loading && assets.length === 0 && debts.length === 0;
+  const activeItem = activeValuation
+    ? (activeValuation.itemType === "asset" ? assets : debts).find((item) => item.id === activeValuation.itemId)
+    : null;
 
   return (
     <div className="page">
@@ -329,11 +471,16 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
             <div>
               <div className="hero-label">Net Worth · Total</div>
               <div className="hero-amount tnum" style={{ filter: privacy ? "blur(10px)" : "none" }}>
-                <span className="sym">S$</span>{dollars}<span className="cents">{cents}</span>
+                <span className="sym">S$</span>{totals.net < 0 ? "−" : ""}{dollars}<span className="cents">{cents}</span>
               </div>
               <div className={"hero-delta" + (netUp ? "" : " down")}>
-                <Icon name={netUp ? "arrowUp" : "arrowDown"} size={12} stroke={2} />
-                {netUp ? "+" : "−"}S${Math.abs(totals.netDelta).toLocaleString("en-SG", { maximumFractionDigits: 0 })} · {(Math.abs(totals.netDelta) / Math.max(1, totals.net - totals.netDelta) * 100).toFixed(1)}% YTD
+                {history.length > 1 ? (
+                  <>
+                    <Icon name={netUp ? "arrowUp" : "arrowDown"} size={12} stroke={2} />
+                    {netUp ? "+" : "−"}S${Math.abs(netDelta).toLocaleString("en-SG", { maximumFractionDigits: 0 })}
+                    {" · "}{(Math.abs(netDelta) / Math.max(1, Math.abs(history[0].value)) * 100).toFixed(1)}% since first point
+                  </>
+                ) : "Add another dated value to measure change"}
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
@@ -434,7 +581,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         <div className="pf-table-hd">
           <div>Holding</div>
           <div>Class</div>
-          <div className="num">Cost basis</div>
+          <div className="num">First recorded</div>
           <div>Trend · 12M</div>
           <div className="num">Δ</div>
           <div className="num">Value</div>
@@ -442,11 +589,12 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         <div className="pf-table">
           {filteredAssets.map((a) => {
             const k = PF_KINDS[a.kind] || { color: "var(--ink-3)", name: a.kind, glyph: "·" };
-            const series = buildSeries(a.base, a.value);
-            const delta = a.value - a.base;
-            const pct = (delta / Math.max(1, a.base)) * 100;
+            const series = getPortfolioItemSeries(histories, "asset", a.id);
+            const firstValue = series[0] ?? a.value;
+            const delta = a.value - firstValue;
+            const pct = (delta / Math.max(1, firstValue)) * 100;
             return (
-              <div key={a.id} className="pf-row">
+              <div key={a.id} className={"pf-row" + (activeValuation?.itemType === "asset" && activeValuation.itemId === a.id ? " selected" : "")}>
                 <div className="pf-cell desc">
                   <div className="pf-glyph" style={{ color: k.color, borderColor: k.color }}>{k.glyph}</div>
                   <div style={{ minWidth: 0 }}>
@@ -458,16 +606,20 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
                   <span className="kind-chip">{k.name}</span>
                 </div>
                 <div className="pf-cell num mono" style={{ color: "var(--ink-3)", fontSize: 12 }}>
-                  {fmtSGD(a.base, privacy)}
+                  {fmtSGD(firstValue, privacy)}
                 </div>
                 <div className="pf-cell">
-                  <MiniSpark data={series} />
+                  {series.length > 1 ? <MiniSpark data={series} /> : <span className="hint">1 point</span>}
                 </div>
                 <div className={"pf-cell num pf-delta " + (delta >= 0 ? "up" : "down")}>
-                  <span>{delta >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</span>
+                  <span>{series.length > 1 ? `${delta >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%` : "—"}</span>
                 </div>
                 <div className="pf-cell num pf-val">
                   <span>{fmtSGD(a.value, privacy)}</span>
+                  <button className="pf-row-history" title="Record value and view history"
+                    onClick={() => setActiveValuation({ itemType: "asset", itemId: a.id })}>
+                    <Icon name="calendar" size={12} stroke={1.8} />
+                  </button>
                   <button
                     className="pf-row-del" title="Remove" disabled={busyId === a.id}
                     onClick={(e) => { e.stopPropagation(); handleDeleteAsset(a.id); }}
@@ -506,11 +658,12 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         </div>
         <div className="pf-table">
           {debts.map((d) => {
-            const series = buildSeries(d.base, d.value);
-            const delta = d.value - d.base;
-            const pct = (delta / Math.max(1, d.base)) * 100;
+            const series = getPortfolioItemSeries(histories, "debt", d.id);
+            const firstValue = series[0] ?? d.value;
+            const delta = d.value - firstValue;
+            const pct = (delta / Math.max(1, firstValue)) * 100;
             return (
-              <div key={d.id} className="pf-row debts">
+              <div key={d.id} className={"pf-row debts" + (activeValuation?.itemType === "debt" && activeValuation.itemId === d.id ? " selected" : "")}>
                 <div className="pf-cell desc">
                   <div className="pf-glyph" style={{ color: "var(--debit)", borderColor: "var(--debit)" }}>·</div>
                   <div style={{ minWidth: 0 }}>
@@ -525,13 +678,17 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
                   {d.monthly ? fmtSGD(d.monthly, privacy) : "—"}
                 </div>
                 <div className="pf-cell">
-                  <MiniSpark data={series} />
+                  {series.length > 1 ? <MiniSpark data={series} /> : <span className="hint">1 point</span>}
                 </div>
                 <div className={"pf-cell num pf-delta " + (delta <= 0 ? "up" : "down")}>
-                  <span>{delta >= 0 ? "+" : "−"}{Math.abs(pct).toFixed(2)}%</span>
+                  <span>{series.length > 1 ? `${delta >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(2)}%` : "—"}</span>
                 </div>
                 <div className="pf-cell num pf-val" style={{ color: "var(--debit)" }}>
                   <span>−{fmtSGD(d.value, privacy)}</span>
+                  <button className="pf-row-history" title="Record balance and view history"
+                    onClick={() => setActiveValuation({ itemType: "debt", itemId: d.id })}>
+                    <Icon name="calendar" size={12} stroke={1.8} />
+                  </button>
                   <button
                     className="pf-row-del" title="Remove" disabled={busyId === d.id}
                     onClick={(e) => { e.stopPropagation(); handleDeleteDebt(d.id); }}
@@ -560,6 +717,17 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         <StatBlock label="Net worth" value={fmtSGD(totals.net, privacy)} sub="Assets minus liabilities" accent />
       </div>
       </>
+      )}
+      {activeItem && activeValuation && (
+        <ValuationPanel
+          itemType={activeValuation.itemType}
+          item={activeItem}
+          history={histories[`${activeValuation.itemType}:${activeValuation.itemId}`] || []}
+          busy={busyId === `valuation:${activeValuation.itemType}:${activeValuation.itemId}`}
+          onSave={handleRecordValuation}
+          onDelete={handleDeleteValuation}
+          onClose={() => setActiveValuation(null)}
+        />
       )}
     </div>
   );

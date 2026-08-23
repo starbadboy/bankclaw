@@ -114,6 +114,79 @@ function lastMonthFlow(txs) {
   return buckets;
 }
 
+// ── Portfolio history helpers ─────────────────────────────────────────────
+
+function _portfolioIsoDate(value) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function _portfolioSortedValuations(entries) {
+  return (entries || [])
+    .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry?.as_of_date) && Number.isFinite(Number(entry?.value)))
+    .map((entry) => ({ ...entry, value: Number(entry.value) }))
+    .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+}
+
+function _portfolioLatestAt(entries, asOfDate) {
+  let latest = null;
+  for (const entry of _portfolioSortedValuations(entries)) {
+    if (entry.as_of_date > asOfDate) break;
+    latest = entry;
+  }
+  return latest;
+}
+
+function getPortfolioItemSeries(histories, itemType, itemId) {
+  const entries = histories?.[`${itemType}:${itemId}`] || [];
+  return _portfolioSortedValuations(entries).map((entry) => entry.value);
+}
+
+function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
+  const months = Math.max(1, Number(options.months) || 12);
+  const now = options.now instanceof Date ? options.now : new Date();
+  const nowIso = _portfolioIsoDate(now);
+  const firstMonth = _portfolioIsoDate(new Date(now.getFullYear(), now.getMonth() - months + 1, 1)).slice(0, 7);
+  const itemKeys = [
+    ...(assets || []).map((asset) => `asset:${asset.id}`),
+    ...(debts || []).map((debt) => `debt:${debt.id}`),
+  ];
+  const latestActivityByMonth = new Map();
+
+  for (const key of itemKeys) {
+    for (const entry of _portfolioSortedValuations(histories?.[key])) {
+      const month = entry.as_of_date.slice(0, 7);
+      if (month < firstMonth || entry.as_of_date > nowIso) continue;
+      const current = latestActivityByMonth.get(month);
+      if (!current || entry.as_of_date > current) latestActivityByMonth.set(month, entry.as_of_date);
+    }
+  }
+
+  return [...latestActivityByMonth.values()].sort().map((asOfDate) => {
+    let value = 0;
+
+    for (const asset of assets || []) {
+      const latest = _portfolioLatestAt(histories?.[`asset:${asset.id}`], asOfDate);
+      if (!latest) continue;
+      value += latest.value;
+    }
+    for (const debt of debts || []) {
+      const latest = _portfolioLatestAt(histories?.[`debt:${debt.id}`], asOfDate);
+      if (!latest) continue;
+      value -= latest.value;
+    }
+
+    const [year, month, day] = asOfDate.split("-").map(Number);
+    return {
+      date: asOfDate,
+      label: new Date(year, month - 1, day).toLocaleDateString("en-SG", { month: "short" }),
+      value: Math.round(value * 100) / 100,
+    };
+  });
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────
 
 function fmtSGD(n, privacy = false) {
@@ -140,19 +213,9 @@ function relDateGroup(iso) {
   return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-// Seeded PRNG used by portfolio sparklines / net-worth history.
-function mulberry32(seed) {
-  let t = seed >>> 0;
-  return function () {
-    t = (t + 0x6D2B79F5) >>> 0;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  fmtSGD, fmtDate, relDateGroup, mulberry32,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries,
+  fmtSGD, fmtDate, relDateGroup,
 });
