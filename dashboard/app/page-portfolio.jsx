@@ -730,7 +730,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     return { A, D, net: A - D };
   }, [assets, debts]);
 
-  const performance = useMemoPF(
+  const perfRows = useMemoPF(
     () => computePortfolioPerformance(assets, debts, histories, { months: PERF_WINDOWS[perfWindow] }),
     [assets, debts, histories, perfWindow],
   );
@@ -761,6 +761,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const debtTotal = debts.reduce((sum, debt) => sum + debt.value, 0);
 
   const isEmpty = !loading && assets.length === 0 && debts.length === 0;
+  const wealthTab = WEALTH_TABS[sub] || WEALTH_TABS["pf-networth"];
   const activeItem = activeValuation
     ? (activeValuation.itemType === "asset" ? assets : debts).find((item) => item.id === activeValuation.itemId)
     : null;
@@ -784,9 +785,9 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   return (
     <div className="page">
       <div className="page-kicker">Portfolio</div>
-      <h1 className="page-title">{(WEALTH_TABS[sub] || WEALTH_TABS["pf-networth"]).title}</h1>
+      <h1 className="page-title">{wealthTab.title}</h1>
       <div className="page-sub">
-        {(WEALTH_TABS[sub] || WEALTH_TABS["pf-networth"]).sub}{" "}
+        {wealthTab.sub}{" "}
         {assets.length} {assets.length === 1 ? "asset" : "assets"} and {debts.length} {debts.length === 1 ? "liability" : "liabilities"} tracked.
       </div>
 
@@ -838,7 +839,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       <div style={{ height: 28 }} />
 
       {sub === "pf-networth" && (
-      <div className="grid-2" style={{ gridTemplateColumns: "1fr" }}>
+      <div>
         <div className="hero">
           <div className="hero-row">
             <div>
@@ -913,20 +914,11 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
                     {allocation[0]?.name.split(" ")[0]}
                   </div>
                   <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4 }}>
-                    {((allocation[0]?.value / totals.A) * 100).toFixed(1)}%
+                    {(((allocation[0]?.value || 0) / Math.max(1, totals.A)) * 100).toFixed(1)}%
                   </div>
                 </div>
               }
             />
-            <div style={{ width: "100%", marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {allocation.map((a) => (
-                <div key={a.id} className="alloc-leg">
-                  <span className="dot" style={{ background: a.color }}></span>
-                  <span className="nm">{a.name}</span>
-                  <span className="pc mono">{((a.value / totals.A) * 100).toFixed(1)}%</span>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -1165,7 +1157,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         <div className="panel-pad">
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "10px 18px", fontSize: 13, alignItems: "center" }}>
             <div className="tag">Item</div><div className="tag">Now</div><div className="tag">Change</div><div className="tag">%</div><div className="tag">Trend</div>
-            {performance.items.map((row) => (
+            {perfRows.items.map((row) => (
               <React.Fragment key={row.key}>
                 <span>{row.itemType === "debt" ? <span className="hint">debt · </span> : null}{row.label}</span>
                 <span className="tnum">{row.current == null ? "—" : fmtSGD(row.itemType === "debt" ? -row.current : row.current, privacy)}</span>
@@ -1184,12 +1176,12 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
               <strong>Net worth</strong>
               <span>{perfWindow === "All" ? "since first valuation" : `over ${perfWindow}`}</span>
             </div>
-            <div className="pf-table-summary-value" style={{ color: (performance.total.delta ?? 0) >= 0 ? "var(--credit)" : "var(--debit)" }}>
-              {performance.total.delta == null ? "—"
-                : `${performance.total.delta >= 0 ? "+" : "−"}${fmtSGD(Math.abs(performance.total.delta), privacy)}`}
-              {performance.total.deltaPct != null && (
+            <div className="pf-table-summary-value" style={{ color: (perfRows.total.delta ?? 0) >= 0 ? "var(--credit)" : "var(--debit)" }}>
+              {perfRows.total.delta == null ? "—"
+                : `${perfRows.total.delta >= 0 ? "+" : "−"}${fmtSGD(Math.abs(perfRows.total.delta), privacy)}`}
+              {perfRows.total.deltaPct != null && (
                 <span className="mono" style={{ fontSize: 12, marginLeft: 8 }}>
-                  {performance.total.deltaPct >= 0 ? "+" : "−"}{Math.abs(performance.total.deltaPct).toFixed(1)}%
+                  {perfRows.total.deltaPct >= 0 ? "+" : "−"}{Math.abs(perfRows.total.deltaPct).toFixed(1)}%
                 </span>
               )}
             </div>

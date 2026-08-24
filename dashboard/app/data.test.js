@@ -151,7 +151,6 @@ test("performance total row equals the sum of item moves", () => {
   const rows = computePortfolioPerformance(assets, debts, histories, {
     months: 6, now: new Date(2025, 7, 24),
   });
-  assert.equal(rows.total.current, 11000 - 3500);
   assert.equal(rows.total.delta, 1000 + 500);   // asset up 1000, debt improved 500
   assert.equal(rows.total.deltaPct, 25);        // baseline net worth 6000
 });
@@ -171,4 +170,64 @@ test("performance all-time window uses first valuation but needs two points", ()
   assert.equal(rows.items[0].delta, 2000);
   assert.equal(rows.items[0].deltaPct, 200);
   assert.equal(rows.items[1].delta, null);
+});
+
+
+test("performance window start clamps at month boundaries instead of rolling over", () => {
+  // 2025-03-30 minus 1 month must clamp to 2025-02-28, not roll to 2025-03-02
+  const assets = [{ id: "a", name: "A" }];
+  const histories = {
+    "asset:a": [
+      { as_of_date: "2025-02-20", value: 1000 },
+      { as_of_date: "2025-03-01", value: 2000 },
+    ],
+  };
+  const rows = computePortfolioPerformance(assets, [], histories, {
+    months: 1, now: new Date(2025, 2, 30),
+  });
+  assert.equal(rows.items[0].delta, 1000);
+  assert.equal(rows.items[0].deltaPct, 100);
+});
+
+test("performance three-month window from may 31 reaches back to february 28", () => {
+  const assets = [{ id: "a", name: "A" }];
+  const histories = {
+    "asset:a": [
+      { as_of_date: "2025-02-28", value: 100 },
+      { as_of_date: "2025-04-01", value: 150 },
+    ],
+  };
+  const rows = computePortfolioPerformance(assets, [], histories, {
+    months: 3, now: new Date(2025, 4, 31),
+  });
+  assert.equal(rows.items[0].delta, 50);  // 02-28 entry is the baseline, not dropped
+});
+
+test("performance twelve-month window from leap day clamps to february 28", () => {
+  const assets = [{ id: "a", name: "A" }];
+  const histories = {
+    "asset:a": [
+      { as_of_date: "2023-02-27", value: 10 },
+      { as_of_date: "2023-06-01", value: 20 },
+    ],
+  };
+  const rows = computePortfolioPerformance(assets, [], histories, {
+    months: 12, now: new Date(2024, 1, 29),
+  });
+  assert.equal(rows.items[0].delta, 10);
+});
+
+test("performance debt series follows the improvement direction of its own row", () => {
+  const debts = [{ id: "loan", name: "Loan" }];
+  const histories = {
+    "debt:loan": [
+      { as_of_date: "2025-05-01", value: 8000 },
+      { as_of_date: "2025-08-01", value: 7000 },
+    ],
+  };
+  const rows = computePortfolioPerformance([], debts, histories, {
+    months: 6, now: new Date(2025, 7, 24),
+  });
+  // pay-down is +1000 (green); the sparkline must rise with it, not fall
+  assert.deepEqual(rows.items[0].series, [-8000, -7000]);
 });

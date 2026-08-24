@@ -190,10 +190,15 @@ function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
 function computePortfolioPerformance(assets, debts, histories, options = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
   const nowIso = _portfolioIsoDate(now);
-  const months = options.months;
-  const windowStart = months
-    ? _portfolioIsoDate(new Date(now.getFullYear(), now.getMonth() - months, now.getDate()))
-    : null;
+  const months = options.months == null ? null : Math.max(1, Number(options.months) || 1);
+  let windowStart = null;
+  if (months) {
+    // clamp the day so month-end "now" doesn't roll the start into the wrong month
+    const lastDay = new Date(now.getFullYear(), now.getMonth() - months + 1, 0).getDate();
+    windowStart = _portfolioIsoDate(
+      new Date(now.getFullYear(), now.getMonth() - months, Math.min(now.getDate(), lastDay)),
+    );
+  }
 
   const itemRow = (itemType, item) => {
     const entries = _portfolioSortedValuations(histories?.[`${itemType}:${item.id}`])
@@ -215,16 +220,18 @@ function computePortfolioPerformance(assets, debts, histories, options = {}) {
       baseline = null; // nothing moved inside the window -> no change to report
     }
 
+    const sign = itemType === "debt" ? -1 : 1; // pay-down reads as improvement
     let delta = null;
     let deltaPct = null;
     if (baseline && latest) {
-      delta = Math.round((latest.value - baseline.value) * 100) / 100;
-      if (itemType === "debt") delta = -delta; // pay-down reads as improvement
+      delta = Math.round(sign * (latest.value - baseline.value) * 100) / 100;
       deltaPct = baseline.value === 0 ? null : Math.round((delta / Math.abs(baseline.value)) * 10000) / 100;
     }
 
-    const series = (baseline ? [baseline, ...inWindow.filter((e) => e !== baseline)] : inWindow)
-      .map((entry) => entry.value);
+    const seriesEntries = baseline && baseline.as_of_date !== inWindow[0]?.as_of_date
+      ? [baseline, ...inWindow]
+      : inWindow;
+    const series = seriesEntries.map((entry) => sign * entry.value);
 
     return { key: `${itemType}:${item.id}`, itemType, label: item.name, current, delta, deltaPct, series };
   };
@@ -242,7 +249,6 @@ function computePortfolioPerformance(assets, debts, histories, options = {}) {
   const anyDelta = items.some((row) => row.delta != null);
   const totalBaseline = totalCurrent - totalDelta;
   const total = {
-    current: Math.round(totalCurrent * 100) / 100,
     delta: anyDelta ? Math.round(totalDelta * 100) / 100 : null,
     deltaPct: anyDelta && totalBaseline !== 0
       ? Math.round((totalDelta / Math.abs(totalBaseline)) * 10000) / 100
