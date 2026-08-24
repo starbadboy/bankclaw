@@ -246,7 +246,7 @@ function GoalsCard({ goals, net, busyId, onCreate, onUpdate, onDelete, privacy }
     <div className="panel">
       <div className="panel-hd">
         <h3>Goals <em>· net-worth milestones</em></h3>
-        <div className="tools"><span>{goals.length ? `${goals.filter((g) => net >= g.target_amount).length}/${goals.length} reached` : "Set a target"}</span></div>
+        <div className="tools"><span>Progress vs current net worth</span></div>
       </div>
       <div className="panel-pad">
         {goals.map((goal) => {
@@ -256,11 +256,12 @@ function GoalsCard({ goals, net, busyId, onCreate, onUpdate, onDelete, privacy }
           if (editingId === goal.id) {
             return (
               <div key={goal.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-                <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-                <input type="number" min="1" step="any" value={draft.target_amount}
-                  onChange={(e) => setDraft({ ...draft, target_amount: e.target.value })} style={{ width: 110 }} />
-                <input type="date" value={draft.target_date || ""}
-                  onChange={(e) => setDraft({ ...draft, target_date: e.target.value })} />
+                <input aria-label="Goal name" value={draft.name}
+                  onChange={(e) => setDraft((cur) => ({ ...cur, name: e.target.value }))} />
+                <input aria-label="Target amount (S$)" type="number" min="1" step="any" value={draft.target_amount}
+                  onChange={(e) => setDraft((cur) => ({ ...cur, target_amount: e.target.value }))} style={{ width: 110 }} />
+                <input aria-label="Target date" type="date" value={draft.target_date || ""}
+                  onChange={(e) => setDraft((cur) => ({ ...cur, target_date: e.target.value }))} />
                 <button className="btn ghost" type="button" disabled={busy || !draft.name.trim()} onClick={() => saveEdit(goal)}>Save</button>
                 <button className="btn ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
               </div>
@@ -279,7 +280,8 @@ function GoalsCard({ goals, net, busyId, onCreate, onUpdate, onDelete, privacy }
                   <span className="tnum">{done ? "Done" : `${Math.round(progress * 100)}%`}</span>
                   <button className="btn ghost" type="button" disabled={busy}
                     onClick={() => { setEditingId(goal.id); setDraft({ name: goal.name, target_amount: goal.target_amount, target_date: goal.target_date }); }}>Edit</button>
-                  <button className="btn ghost" type="button" disabled={busy} onClick={() => onDelete(goal.id)}>Remove</button>
+                  <button className="btn ghost" type="button" disabled={busy}
+                    onClick={async () => { setError(""); try { await onDelete(goal.id); } catch (err) { setError(err.message); } }}>Remove</button>
                 </span>
               </div>
               <div style={{ height: 6, borderRadius: 3, background: "var(--rule)", marginTop: 6 }}>
@@ -290,10 +292,10 @@ function GoalsCard({ goals, net, busyId, onCreate, onUpdate, onDelete, privacy }
         })}
         {!goals.length && <div className="hint" style={{ marginBottom: 10 }}>No goals yet — add a net-worth milestone below.</div>}
         <form onSubmit={submit} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <input placeholder="Goal name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input type="number" min="1" step="any" placeholder="Target S$" value={amount}
+          <input aria-label="Goal name" placeholder="Goal name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input aria-label="Target amount (S$)" type="number" min="1" step="any" placeholder="Target S$" value={amount}
             onChange={(e) => setAmount(e.target.value)} style={{ width: 110 }} />
-          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+          <input aria-label="Target date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
           <button className="btn primary" type="submit" disabled={!name.trim() || !amount || busyId === "goal:create"}>
             <Icon name="plus" size={12} stroke={2.2} /> Add goal
           </button>

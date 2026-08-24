@@ -179,5 +179,6 @@ def test_goal_api_returns_repository_errors_as_bad_requests():
             asyncio.run(remove_portfolio_goal("bad", user="owner@example.com"))
 
     assert create_err.value.status_code == 400
+    assert create_err.value.detail == "target_amount must be greater than zero"
     assert update_err.value.status_code == 400
     assert delete_err.value.status_code == 400

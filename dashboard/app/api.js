@@ -417,7 +417,10 @@ async function apiDeletePortfolioDebt(id) {
 }
 async function apiFetchPortfolioGoals() {
   const res = await _fetch("/api/portfolio/goals");
-  if (!res.ok) return [];
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load goals");
+  }
   const data = await res.json();
   return data.goals || [];
 }
@@ -427,11 +430,11 @@ async function apiCreatePortfolioGoal(payload) {
 }
 
 async function apiUpdatePortfolioGoal(id, payload) {
-  return _portfolioMutate(`/api/portfolio/goals/${id}`, "PATCH", payload);
+  return _portfolioMutate(`/api/portfolio/goals/${encodeURIComponent(id)}`, "PATCH", payload);
 }
 
 async function apiDeletePortfolioGoal(id) {
-  return _portfolioMutate(`/api/portfolio/goals/${id}`, "DELETE");
+  return _portfolioMutate(`/api/portfolio/goals/${encodeURIComponent(id)}`, "DELETE");
 }
 
 async function apiFetchPortfolioValuations(itemType, id) {

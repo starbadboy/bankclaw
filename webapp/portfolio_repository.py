@@ -164,12 +164,12 @@ def _normalize_item_type(item_type: str) -> str:
     return normalized
 
 
-def _normalize_as_of_date(raw: object) -> str:
-    value = _clean_str(raw, field="as_of_date", max_len=10)
+def _normalize_as_of_date(raw: object, *, field: str = "as_of_date") -> str:
+    value = _clean_str(raw, field=field, max_len=10)
     try:
         return date.fromisoformat(value).isoformat()
     except ValueError as exc:
-        raise ValueError("as_of_date must be a valid YYYY-MM-DD date") from exc
+        raise ValueError(f"{field} must be a valid YYYY-MM-DD date") from exc
 
 
 def _item_collection(item_type: str) -> str:
@@ -426,11 +426,7 @@ def _normalize_goal_target(raw: object) -> float:
 def _normalize_goal_date(raw: object) -> str | None:
     if raw in (None, ""):
         return None
-    value = _clean_str(raw, field="target_date", max_len=10)
-    try:
-        return date.fromisoformat(value).isoformat()
-    except ValueError as exc:
-        raise ValueError("target_date must be a valid YYYY-MM-DD date") from exc
+    return _normalize_as_of_date(raw, field="target_date")
 
 
 def list_goals(user_email: str) -> list[dict]:
