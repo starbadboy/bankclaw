@@ -512,6 +512,8 @@ const WEALTH_TABS = {
   "pf-performance": { title: <>Performance, <i>over time.</i></>, sub: "What moved, by how much, over the window you pick." },
 };
 
+const PERF_WINDOWS = { "1M": 1, "3M": 3, "1Y": 12, "All": null };
+
 function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [assets, setAssets] = useStatePF([]);
   const [debts, setDebts] = useStatePF([]);
@@ -522,6 +524,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [filter, setFilter] = useStatePF("all");
   const [busyId, setBusyId] = useStatePF(null);
   const [goals, setGoals] = useStatePF([]);
+  const [perfWindow, setPerfWindow] = useStatePF("3M");
 
   const refreshGoals = async () => setGoals(await apiFetchPortfolioGoals());
 
@@ -727,6 +730,11 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     return { A, D, net: A - D };
   }, [assets, debts]);
 
+  const performance = useMemoPF(
+    () => computePortfolioPerformance(assets, debts, histories, { months: PERF_WINDOWS[perfWindow] }),
+    [assets, debts, histories, perfWindow],
+  );
+
   const allocation = useMemoPF(() => {
     const map = {};
     assets.forEach((a) => { map[a.kind] = (map[a.kind] || 0) + a.value; });
@@ -917,6 +925,26 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
                   <span className="nm">{a.name}</span>
                   <span className="pc mono">{((a.value / totals.A) * 100).toFixed(1)}%</span>
                 </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-hd">
+            <h3>Class breakdown</h3>
+            <div className="tools"><span>Value · share · positions</span></div>
+          </div>
+          <div className="panel-pad">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto", gap: "8px 16px", fontSize: 13, alignItems: "baseline" }}>
+              <div className="tag">Class</div><div className="tag">Value</div><div className="tag">% of assets</div><div className="tag">Positions</div>
+              {allocation.map((a) => (
+                <React.Fragment key={a.id}>
+                  <span><span className="dot" style={{ background: a.color, marginRight: 6 }}></span>{a.name}</span>
+                  <span className="tnum">{fmtSGD(a.value, privacy)}</span>
+                  <span className="mono">{((a.value / Math.max(1, totals.A)) * 100).toFixed(1)}%</span>
+                  <span className="mono">{assets.filter((x) => x.kind === a.id).length}</span>
+                </React.Fragment>
               ))}
             </div>
           </div>
@@ -1120,7 +1148,56 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       </>
       )}
 
-      {sub === "pf-performance" && null}
+      {sub === "pf-performance" && (
+      <>
+      <div style={{ height: 28 }} />
+      <div className="panel">
+        <div className="panel-hd">
+          <h3>Performance <em>· by position</em></h3>
+          <div className="tools">
+            <div className="seg">
+              {Object.keys(PERF_WINDOWS).map((w) => (
+                <button key={w} className={perfWindow === w ? "on" : ""} onClick={() => setPerfWindow(w)}>{w}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="panel-pad">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto auto auto", gap: "10px 18px", fontSize: 13, alignItems: "center" }}>
+            <div className="tag">Item</div><div className="tag">Now</div><div className="tag">Change</div><div className="tag">%</div><div className="tag">Trend</div>
+            {performance.items.map((row) => (
+              <React.Fragment key={row.key}>
+                <span>{row.itemType === "debt" ? <span className="hint">debt · </span> : null}{row.label}</span>
+                <span className="tnum">{row.current == null ? "—" : fmtSGD(row.itemType === "debt" ? -row.current : row.current, privacy)}</span>
+                <span className="tnum" style={{ color: row.delta == null ? "var(--ink-3)" : row.delta >= 0 ? "var(--credit)" : "var(--debit)" }}>
+                  {row.delta == null ? "—" : `${row.delta >= 0 ? "+" : "−"}${fmtSGD(Math.abs(row.delta), privacy)}`}
+                </span>
+                <span className="mono" style={{ color: row.deltaPct == null ? "var(--ink-3)" : row.deltaPct >= 0 ? "var(--credit)" : "var(--debit)" }}>
+                  {row.deltaPct == null ? "—" : `${row.deltaPct >= 0 ? "+" : "−"}${Math.abs(row.deltaPct).toFixed(1)}%`}
+                </span>
+                <span>{row.series.length > 1 ? <MiniSpark data={row.series} /> : <span className="hint">—</span>}</span>
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="pf-table-summary" style={{ marginTop: 14 }}>
+            <div className="pf-table-summary-label">
+              <strong>Net worth</strong>
+              <span>{perfWindow === "All" ? "since first valuation" : `over ${perfWindow}`}</span>
+            </div>
+            <div className="pf-table-summary-value" style={{ color: (performance.total.delta ?? 0) >= 0 ? "var(--credit)" : "var(--debit)" }}>
+              {performance.total.delta == null ? "—"
+                : `${performance.total.delta >= 0 ? "+" : "−"}${fmtSGD(Math.abs(performance.total.delta), privacy)}`}
+              {performance.total.deltaPct != null && (
+                <span className="mono" style={{ fontSize: 12, marginLeft: 8 }}>
+                  {performance.total.deltaPct >= 0 ? "+" : "−"}{Math.abs(performance.total.deltaPct).toFixed(1)}%
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      </>
+      )}
       </>
       )}
       {activeItem && activeValuation && (

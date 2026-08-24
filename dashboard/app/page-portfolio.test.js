@@ -72,3 +72,14 @@ test("each wealth tab gates its own sections", () => {
 test("wealth tab titles adapt per view", () => {
   assert.match(source, /WEALTH_TABS\[sub\]/);
 });
+
+test("allocation tab includes a per-class breakdown table", () => {
+  assert.match(source, /% of assets/);
+  assert.match(source, /Positions/);
+});
+
+test("performance tab renders windowed changes from the data helper", () => {
+  assert.match(source, /computePortfolioPerformance/);
+  assert.match(source, /PERF_WINDOWS/);
+  assert.match(source, /row\.series/);
+});
