@@ -47,17 +47,21 @@ try:
         create_asset,
         create_asset_type,
         create_debt,
+        create_goal,
         delete_asset,
         delete_asset_type,
         delete_debt,
+        delete_goal,
         delete_valuation,
         list_asset_types,
+        list_goals,
         list_portfolio,
         list_valuations,
         record_valuation,
         update_asset,
         update_asset_type,
         update_debt,
+        update_goal,
     )
     _MONGO = True
 except Exception:  # noqa: BLE001
@@ -449,6 +453,51 @@ async def remove_portfolio_asset_type(type_id: str, user: str = Depends(_current
         raise HTTPException(status_code=503, detail="Database not available")
     try:
         return delete_asset_type(user, type_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/portfolio/goals")
+async def get_portfolio_goals(user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        return {"goals": []}
+    return {"goals": list_goals(user)}
+
+
+@app.post("/api/portfolio/goals")
+async def add_portfolio_goal(request: Request, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        goal = create_goal(user, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"goal": goal}
+
+
+@app.patch("/api/portfolio/goals/{goal_id}")
+async def edit_portfolio_goal(
+    goal_id: str,
+    request: Request,
+    user: str = Depends(_current_user),
+) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    body = await request.json()
+    try:
+        goal = update_goal(user, goal_id, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"goal": goal}
+
+
+@app.delete("/api/portfolio/goals/{goal_id}")
+async def remove_portfolio_goal(goal_id: str, user: str = Depends(_current_user)) -> dict:
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        return delete_goal(user, goal_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

@@ -11,11 +11,15 @@ from fastapi import HTTPException
 
 from webapp.api import (
     add_portfolio_asset_type,
+    add_portfolio_goal,
     add_portfolio_valuation,
     edit_portfolio_asset_type,
+    edit_portfolio_goal,
     get_portfolio_asset_types,
+    get_portfolio_goals,
     get_portfolio_valuations,
     remove_portfolio_asset_type,
+    remove_portfolio_goal,
     remove_portfolio_valuation,
 )
 
@@ -131,3 +135,49 @@ def test_portfolio_valuation_errors_are_returned_as_bad_requests():
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == "invalid valuation"
+
+
+def test_goal_api_is_user_scoped():
+    with (
+        patch("webapp.api._MONGO", True),
+        patch("webapp.api.list_goals", return_value=[{"id": "g1"}]) as mock_list,
+        patch("webapp.api.create_goal", return_value={"id": "g1"}) as mock_create,
+        patch("webapp.api.update_goal", return_value={"id": "g1"}) as mock_update,
+        patch("webapp.api.delete_goal", return_value={"deleted": 1}) as mock_delete,
+    ):
+        listed = asyncio.run(get_portfolio_goals(user="owner@example.com"))
+        created = asyncio.run(
+            add_portfolio_goal(_JsonRequest({"name": "First 100k", "target_amount": 100000}), user="owner@example.com")
+        )
+        updated = asyncio.run(
+            edit_portfolio_goal("g1", _JsonRequest({"target_amount": 120000}), user="owner@example.com")
+        )
+        deleted = asyncio.run(remove_portfolio_goal("g1", user="owner@example.com"))
+
+    assert listed == {"goals": [{"id": "g1"}]}
+    assert created == {"goal": {"id": "g1"}}
+    assert updated == {"goal": {"id": "g1"}}
+    assert deleted == {"deleted": 1}
+    assert mock_list.call_args.args == ("owner@example.com",)
+    assert mock_create.call_args.args[0] == "owner@example.com"
+    assert mock_update.call_args.args[:2] == ("owner@example.com", "g1")
+    assert mock_delete.call_args.args == ("owner@example.com", "g1")
+
+
+def test_goal_api_returns_repository_errors_as_bad_requests():
+    with (
+        patch("webapp.api._MONGO", True),
+        patch("webapp.api.create_goal", side_effect=ValueError("target_amount must be greater than zero")),
+        patch("webapp.api.update_goal", side_effect=ValueError("Goal not found")),
+        patch("webapp.api.delete_goal", side_effect=ValueError("Goal not found")),
+    ):
+        with pytest.raises(HTTPException) as create_err:
+            asyncio.run(add_portfolio_goal(_JsonRequest({"name": "G", "target_amount": 0}), user="owner@example.com"))
+        with pytest.raises(HTTPException) as update_err:
+            asyncio.run(edit_portfolio_goal("bad", _JsonRequest({"name": "X"}), user="owner@example.com"))
+        with pytest.raises(HTTPException) as delete_err:
+            asyncio.run(remove_portfolio_goal("bad", user="owner@example.com"))
+
+    assert create_err.value.status_code == 400
+    assert update_err.value.status_code == 400
+    assert delete_err.value.status_code == 400
