@@ -6,13 +6,17 @@ from bson import ObjectId
 from webapp.portfolio_repository import (
     create_asset,
     create_asset_type,
+    create_goal,
     delete_asset,
     delete_asset_type,
+    delete_goal,
     delete_valuation,
     list_asset_types,
+    list_goals,
     list_valuations,
     record_valuation,
     update_asset_type,
+    update_goal,
 )
 
 
@@ -23,6 +27,7 @@ def _portfolio_db():
         "portfolio_asset_types": MagicMock(),
         "portfolio_debts": MagicMock(),
         "portfolio_valuations": MagicMock(),
+        "portfolio_goals": MagicMock(),
     }
     db.__getitem__.side_effect = collections.__getitem__
     return db, collections
@@ -282,3 +287,78 @@ def test_delete_valuation_syncs_item_to_latest_remaining_value():
         }
     )
     assert assets.update_one.call_args.args[1]["$set"]["value"] == 1000.0
+
+
+def test_goal_crud_is_user_scoped():
+    db, collections = _portfolio_db()
+    goal_id = ObjectId()
+    goals = collections["portfolio_goals"]
+    goals.insert_one.return_value.inserted_id = goal_id
+    goals.find.return_value = [
+        {
+            "_id": goal_id,
+            "user_email": "owner@example.com",
+            "name": "First 100k",
+            "target_amount": 100000.0,
+            "target_date": None,
+        }
+    ]
+    goals.find_one_and_update.return_value = {
+        "_id": goal_id,
+        "user_email": "owner@example.com",
+        "name": "First 100k",
+        "target_amount": 120000.0,
+        "target_date": "2027-12-31",
+    }
+    goals.delete_one.return_value.deleted_count = 1
+
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        created = create_goal("owner@example.com", {"name": "First 100k", "target_amount": 100000})
+        listed = list_goals("owner@example.com")
+        updated = update_goal(
+            "owner@example.com",
+            created["id"],
+            {"target_amount": 120000, "target_date": "2027-12-31"},
+        )
+        deleted = delete_goal("owner@example.com", created["id"])
+
+    assert created == {
+        "id": str(goal_id),
+        "name": "First 100k",
+        "target_amount": 100000.0,
+        "target_date": None,
+    }
+    assert listed == [created]
+    assert updated["target_amount"] == 120000.0
+    assert updated["target_date"] == "2027-12-31"
+    assert deleted == {"deleted": 1}
+    assert goals.find.call_args.args[0] == {"user_email": "owner@example.com"}
+    assert goals.find.call_args.kwargs["sort"] == [("target_amount", 1)]
+    assert goals.delete_one.call_args.args[0] == {"_id": goal_id, "user_email": "owner@example.com"}
+
+
+def test_goal_validation_rejects_bad_payloads():
+    db, _ = _portfolio_db()
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        with pytest.raises(ValueError, match="name is required"):
+            create_goal("owner@example.com", {"target_amount": 100})
+        with pytest.raises(ValueError, match="target_amount must be greater than zero"):
+            create_goal("owner@example.com", {"name": "Goal", "target_amount": 0})
+        with pytest.raises(ValueError, match="target_amount must be a number"):
+            create_goal("owner@example.com", {"name": "Goal", "target_amount": "lots"})
+        with pytest.raises(ValueError, match="target_date must be a valid YYYY-MM-DD date"):
+            create_goal("owner@example.com", {"name": "Goal", "target_amount": 100, "target_date": "eventually"})
+        with pytest.raises(ValueError, match="Nothing to update"):
+            update_goal("owner@example.com", str(ObjectId()), {})
+
+
+def test_goal_update_and_delete_missing_goal_raise():
+    db, collections = _portfolio_db()
+    goals = collections["portfolio_goals"]
+    goals.find_one_and_update.return_value = None
+    goals.delete_one.return_value.deleted_count = 0
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        with pytest.raises(ValueError, match="Goal not found"):
+            update_goal("owner@example.com", str(ObjectId()), {"name": "X"})
+        with pytest.raises(ValueError, match="Goal not found"):
+            delete_goal("owner@example.com", str(ObjectId()))
