@@ -1058,12 +1058,12 @@ function App() {
         {mode === "ledger" && page === "profiles" && <ProfilesPage profiles={profiles} reloadProfiles={loadProfiles} />}
         {mode === "ledger" && page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
 
-        {mode === "portfolio" && (page === "pf-networth" || page === "pf-holdings" || page === "pf-allocation" || page === "pf-performance") &&
+        {mode === "portfolio" && (page === "pf-networth" || page === "pf-holdings" || page === "pf-allocation" || page === "pf-performance" || page === "pf-goals") &&
           <PortfolioPage privacy={tweaks.privacy} sub={page} />}
-        {mode === "portfolio" && (page === "pf-goals" || page === "pf-accounts") && (
+        {mode === "portfolio" && page === "pf-accounts" && (
           <div className="page">
             <div className="page-kicker">Library</div>
-            <h1 className="page-title">{page === "pf-goals" ? "Goals" : "Linked accounts"}</h1>
+            <h1 className="page-title">Linked accounts</h1>
             <div className="page-sub">Coming soon.</div>
           </div>
         )}

@@ -750,6 +750,22 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
     ? (activeValuation.itemType === "asset" ? assets : debts).find((item) => item.id === activeValuation.itemId)
     : null;
 
+  if (sub === "pf-goals") {
+    return (
+      <div className="page">
+        <div className="page-kicker">Library</div>
+        <h1 className="page-title">Goals</h1>
+        <div className="page-sub">Net-worth milestones, measured against what you hold today.</div>
+        {err && (
+          <div className="panel panel-pad" style={{ marginTop: 18, color: "var(--debit)", fontSize: 13 }}>{err}</div>
+        )}
+        <div style={{ height: 18 }} />
+        <GoalsCard goals={goals} net={totals.net} busyId={busyId} privacy={privacy}
+          onCreate={createGoal} onUpdate={updateGoal} onDelete={deleteGoal} />
+      </div>
+    );
+  }
+
   return (
     <div className="page">
       <div className="page-kicker">Portfolio</div>
@@ -895,9 +911,6 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       </div>
 
       <div style={{ height: 28 }} />
-      <GoalsCard goals={goals} net={totals.net} busyId={busyId} privacy={privacy}
-        onCreate={createGoal} onUpdate={updateGoal} onDelete={deleteGoal} />
-
       <div className="panel">
         <div className="panel-hd">
           <h3>Assets <em>· holdings</em></h3>
