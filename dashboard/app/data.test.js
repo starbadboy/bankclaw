@@ -66,3 +66,109 @@ test("portfolio history stays empty when no real valuations exist", () => {
 
   assert.deepEqual(history, []);
 });
+
+test("performance rows compute windowed change per item", () => {
+  const assets = [{ id: "cash", name: "Cash DBS" }];
+  const debts = [];
+  const histories = {
+    "asset:cash": [
+      { as_of_date: "2025-01-10", value: 10000 },
+      { as_of_date: "2025-06-01", value: 12000 },
+      { as_of_date: "2025-08-10", value: 12400 },
+    ],
+  };
+  const rows = computePortfolioPerformance(assets, debts, histories, {
+    months: 3, now: new Date(2025, 7, 24),
+  });
+  const cash = rows.items.find((r) => r.key === "asset:cash");
+  // window starts 2025-05-24: baseline = latest at/before start = 10000 (Jan 10)
+  assert.equal(cash.current, 12400);
+  assert.equal(cash.delta, 2400);
+  assert.equal(cash.deltaPct, 24);
+  assert.deepEqual(cash.series, [10000, 12000, 12400]);
+});
+
+test("performance debt rows read pay-down as positive improvement", () => {
+  const debts = [{ id: "loan", name: "Car loan" }];
+  const histories = {
+    "debt:loan": [
+      { as_of_date: "2025-05-01", value: 8000 },
+      { as_of_date: "2025-08-01", value: 7000 },
+    ],
+  };
+  const rows = computePortfolioPerformance([], debts, histories, {
+    months: 6, now: new Date(2025, 7, 24),
+  });
+  const loan = rows.items.find((r) => r.key === "debt:loan");
+  assert.equal(loan.current, 7000);
+  assert.equal(loan.delta, 1000);      // balance fell 1000 -> improvement +1000
+  assert.equal(loan.deltaPct, 12.5);
+});
+
+test("performance rows with no in-window valuations show no change", () => {
+  const assets = [{ id: "old", name: "Dormant" }];
+  const histories = {
+    "asset:old": [{ as_of_date: "2024-01-01", value: 5000 }],
+  };
+  const rows = computePortfolioPerformance(assets, [], histories, {
+    months: 1, now: new Date(2025, 7, 24),
+  });
+  const old = rows.items.find((r) => r.key === "asset:old");
+  assert.equal(old.current, 5000);
+  assert.equal(old.delta, null);
+  assert.equal(old.deltaPct, null);
+});
+
+test("performance percentage is null on a zero baseline", () => {
+  const assets = [{ id: "new", name: "New account" }];
+  const histories = {
+    "asset:new": [
+      { as_of_date: "2025-07-01", value: 0 },
+      { as_of_date: "2025-08-01", value: 500 },
+    ],
+  };
+  const rows = computePortfolioPerformance(assets, [], histories, {
+    months: 3, now: new Date(2025, 7, 24),
+  });
+  const item = rows.items[0];
+  assert.equal(item.delta, 500);
+  assert.equal(item.deltaPct, null);
+});
+
+test("performance total row equals the sum of item moves", () => {
+  const assets = [{ id: "a", name: "A" }];
+  const debts = [{ id: "d", name: "D" }];
+  const histories = {
+    "asset:a": [
+      { as_of_date: "2025-05-01", value: 10000 },
+      { as_of_date: "2025-08-01", value: 11000 },
+    ],
+    "debt:d": [
+      { as_of_date: "2025-05-01", value: 4000 },
+      { as_of_date: "2025-08-01", value: 3500 },
+    ],
+  };
+  const rows = computePortfolioPerformance(assets, debts, histories, {
+    months: 6, now: new Date(2025, 7, 24),
+  });
+  assert.equal(rows.total.current, 11000 - 3500);
+  assert.equal(rows.total.delta, 1000 + 500);   // asset up 1000, debt improved 500
+  assert.equal(rows.total.deltaPct, 25);        // baseline net worth 6000
+});
+
+test("performance all-time window uses first valuation but needs two points", () => {
+  const assets = [{ id: "a", name: "A" }, { id: "single", name: "One point" }];
+  const histories = {
+    "asset:a": [
+      { as_of_date: "2023-01-01", value: 1000 },
+      { as_of_date: "2025-08-01", value: 3000 },
+    ],
+    "asset:single": [{ as_of_date: "2025-08-01", value: 500 }],
+  };
+  const rows = computePortfolioPerformance(assets, [], histories, {
+    months: null, now: new Date(2025, 7, 24),
+  });
+  assert.equal(rows.items[0].delta, 2000);
+  assert.equal(rows.items[0].deltaPct, 200);
+  assert.equal(rows.items[1].delta, null);
+});
