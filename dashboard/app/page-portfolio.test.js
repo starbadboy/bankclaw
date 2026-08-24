@@ -43,3 +43,17 @@ test("portfolio table summaries total the visible assets and all debts", () => {
   assert.match(source, /fmtSGD\(filteredAssetTotal, privacy\)/);
   assert.match(source, /fmtSGD\(-debtTotal, privacy\)/);
 });
+
+test("portfolio page manages net-worth goals through the API", () => {
+  assert.match(source, /function GoalsCard/);
+  assert.match(source, /apiFetchPortfolioGoals/);
+  assert.match(source, /apiCreatePortfolioGoal/);
+  assert.match(source, /apiUpdatePortfolioGoal/);
+  assert.match(source, /apiDeletePortfolioGoal/);
+});
+
+test("goal progress derives from net worth, capped, with computed done state", () => {
+  assert.match(source, /goal\.target_amount/);
+  assert.match(source, /Math\.min\(1,/);
+  assert.match(source, /net >= goal\.target_amount|goal\.target_amount <= .*net/);
+});

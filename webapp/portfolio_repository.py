@@ -6,6 +6,7 @@ Four collections, all scoped to ``user_email``:
 * ``portfolio_asset_types`` — user-defined asset class names and colors
 * ``portfolio_debts``  — name, kind, sub, value, base, apr, monthly
 * ``portfolio_valuations`` — dated values for each asset or debt
+* ``portfolio_goals`` — net-worth milestone targets with optional dates
 
 ``value`` on an asset or debt is a denormalized copy of its latest dated
 valuation. Historical charts read ``portfolio_valuations`` directly instead
@@ -27,6 +28,7 @@ _ASSETS_COLLECTION = "portfolio_assets"
 _ASSET_TYPES_COLLECTION = "portfolio_asset_types"
 _DEBTS_COLLECTION = "portfolio_debts"
 _VALUATIONS_COLLECTION = "portfolio_valuations"
+_GOALS_COLLECTION = "portfolio_goals"
 
 _ASSET_KINDS = {"cash", "equities", "bonds", "retirement", "property", "crypto"}
 _ASSET_KIND_NAMES = {"cash & savings", "equities", "bonds", "retirement", "property", "crypto"}
@@ -87,6 +89,10 @@ def _ensure_indexes() -> None:
             ("as_of_date", ASCENDING),
         ],
         unique=True,
+        background=True,
+    )
+    db[_GOALS_COLLECTION].create_index(
+        [("user_email", ASCENDING), ("target_amount", ASCENDING)],
         background=True,
     )
 
@@ -158,12 +164,12 @@ def _normalize_item_type(item_type: str) -> str:
     return normalized
 
 
-def _normalize_as_of_date(raw: object) -> str:
-    value = _clean_str(raw, field="as_of_date", max_len=10)
+def _normalize_as_of_date(raw: object, *, field: str = "as_of_date") -> str:
+    value = _clean_str(raw, field=field, max_len=10)
     try:
         return date.fromisoformat(value).isoformat()
     except ValueError as exc:
-        raise ValueError("as_of_date must be a valid YYYY-MM-DD date") from exc
+        raise ValueError(f"{field} must be a valid YYYY-MM-DD date") from exc
 
 
 def _item_collection(item_type: str) -> str:
@@ -393,6 +399,90 @@ def delete_asset_type(user_email: str, type_id: str) -> dict:
     result = collection.delete_one({"_id": oid, "user_email": user_email})
     if result.deleted_count == 0:
         raise ValueError("Asset type not found")
+    return {"deleted": 1}
+
+
+# ---------------------------------------------------------------------------
+# Goals
+# ---------------------------------------------------------------------------
+
+
+def _serialize_goal(doc: dict) -> dict:
+    return {
+        "id": str(doc["_id"]),
+        "name": doc["name"],
+        "target_amount": doc["target_amount"],
+        "target_date": doc.get("target_date"),
+    }
+
+
+def _normalize_goal_target(raw: object) -> float:
+    value = _coerce_value(raw, field="target_amount")
+    if value <= 0:
+        raise ValueError("target_amount must be greater than zero")
+    return value
+
+
+def _normalize_goal_date(raw: object) -> str | None:
+    if raw in (None, ""):
+        return None
+    return _normalize_as_of_date(raw, field="target_date")
+
+
+def list_goals(user_email: str) -> list[dict]:
+    _ensure_indexes()
+    docs = get_db()[_GOALS_COLLECTION].find(
+        {"user_email": user_email},
+        sort=[("target_amount", ASCENDING)],
+    )
+    return [_serialize_goal(doc) for doc in docs]
+
+
+def create_goal(user_email: str, payload: dict) -> dict:
+    _ensure_indexes()
+    now = _now_iso()
+    doc = {
+        "user_email": user_email,
+        "name": _clean_str(payload.get("name"), field="name", max_len=80),
+        "target_amount": _normalize_goal_target(payload.get("target_amount")),
+        "target_date": _normalize_goal_date(payload.get("target_date")),
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = get_db()[_GOALS_COLLECTION].insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _serialize_goal(doc)
+
+
+def update_goal(user_email: str, goal_id: str, payload: dict) -> dict:
+    _ensure_indexes()
+    set_doc: dict = {}
+    if "name" in payload:
+        set_doc["name"] = _clean_str(payload["name"], field="name", max_len=80)
+    if "target_amount" in payload:
+        set_doc["target_amount"] = _normalize_goal_target(payload["target_amount"])
+    if "target_date" in payload:
+        set_doc["target_date"] = _normalize_goal_date(payload["target_date"])
+    if not set_doc:
+        raise ValueError("Nothing to update")
+    set_doc["updated_at"] = _now_iso()
+    result = get_db()[_GOALS_COLLECTION].find_one_and_update(
+        {"_id": _to_oid(goal_id), "user_email": user_email},
+        {"$set": set_doc},
+        return_document=True,
+    )
+    if not result:
+        raise ValueError("Goal not found")
+    return _serialize_goal(result)
+
+
+def delete_goal(user_email: str, goal_id: str) -> dict:
+    _ensure_indexes()
+    result = get_db()[_GOALS_COLLECTION].delete_one(
+        {"_id": _to_oid(goal_id), "user_email": user_email}
+    )
+    if result.deleted_count == 0:
+        raise ValueError("Goal not found")
     return {"deleted": 1}
 
 

@@ -213,6 +213,99 @@ function AddRowForm({ kind, onSave, onCancel, assetKinds = PF_KINDS, onCreateAss
   );
 }
 
+function GoalsCard({ goals, net, busyId, onCreate, onUpdate, onDelete, privacy }) {
+  const [name, setName] = useStatePF("");
+  const [amount, setAmount] = useStatePF("");
+  const [targetDate, setTargetDate] = useStatePF("");
+  const [editingId, setEditingId] = useStatePF(null);
+  const [draft, setDraft] = useStatePF({});
+  const [error, setError] = useStatePF("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    try {
+      await onCreate({ name, target_amount: Number(amount), target_date: targetDate || null });
+      setName(""); setAmount(""); setTargetDate("");
+    } catch (err) { setError(err.message); }
+  };
+
+  const saveEdit = async (goal) => {
+    setError("");
+    try {
+      await onUpdate(goal.id, {
+        name: draft.name,
+        target_amount: Number(draft.target_amount),
+        target_date: draft.target_date || null,
+      });
+      setEditingId(null);
+    } catch (err) { setError(err.message); }
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel-hd">
+        <h3>Goals <em>· net-worth milestones</em></h3>
+        <div className="tools"><span>Progress vs current net worth</span></div>
+      </div>
+      <div className="panel-pad">
+        {goals.map((goal) => {
+          const progress = Math.min(1, Math.max(0, net / goal.target_amount));
+          const done = net >= goal.target_amount;
+          const busy = busyId === `goal:${goal.id}`;
+          if (editingId === goal.id) {
+            return (
+              <div key={goal.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                <input aria-label="Goal name" value={draft.name}
+                  onChange={(e) => setDraft((cur) => ({ ...cur, name: e.target.value }))} />
+                <input aria-label="Target amount (S$)" type="number" min="1" step="any" value={draft.target_amount}
+                  onChange={(e) => setDraft((cur) => ({ ...cur, target_amount: e.target.value }))} style={{ width: 110 }} />
+                <input aria-label="Target date" type="date" value={draft.target_date || ""}
+                  onChange={(e) => setDraft((cur) => ({ ...cur, target_date: e.target.value }))} />
+                <button className="btn ghost" type="button" disabled={busy || !draft.name.trim()} onClick={() => saveEdit(goal)}>Save</button>
+                <button className="btn ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+              </div>
+            );
+          }
+          return (
+            <div key={goal.id} style={{ marginBottom: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                <span>
+                  {done && <Icon name="check" size={12} stroke={2.2} />} <strong>{goal.name}</strong>
+                  <span className="hint" style={{ marginLeft: 8 }}>
+                    {fmtSGD(goal.target_amount, privacy)}{goal.target_date ? ` · by ${goal.target_date}` : ""}
+                  </span>
+                </span>
+                <span className="tools" style={{ gap: 8 }}>
+                  <span className="tnum">{done ? "Done" : `${Math.round(progress * 100)}%`}</span>
+                  <button className="btn ghost" type="button" disabled={busy}
+                    onClick={() => { setEditingId(goal.id); setDraft({ name: goal.name, target_amount: goal.target_amount, target_date: goal.target_date }); }}>Edit</button>
+                  <button className="btn ghost" type="button" disabled={busy}
+                    onClick={async () => { setError(""); try { await onDelete(goal.id); } catch (err) { setError(err.message); } }}>Remove</button>
+                </span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: "var(--rule)", marginTop: 6 }}>
+                <div style={{ height: 6, borderRadius: 3, width: `${progress * 100}%`, background: done ? "var(--credit)" : "var(--accent)" }} />
+              </div>
+            </div>
+          );
+        })}
+        {!goals.length && <div className="hint" style={{ marginBottom: 10 }}>No goals yet — add a net-worth milestone below.</div>}
+        <form onSubmit={submit} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input aria-label="Goal name" placeholder="Goal name" value={name} onChange={(e) => setName(e.target.value)} />
+          <input aria-label="Target amount (S$)" type="number" min="1" step="any" placeholder="Target S$" value={amount}
+            onChange={(e) => setAmount(e.target.value)} style={{ width: 110 }} />
+          <input aria-label="Target date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+          <button className="btn primary" type="submit" disabled={!name.trim() || !amount || busyId === "goal:create"}>
+            <Icon name="plus" size={12} stroke={2.2} /> Add goal
+          </button>
+        </form>
+        {error && <div className="hint" style={{ color: "var(--debit)", marginTop: 6 }}>{error}</div>}
+      </div>
+    </div>
+  );
+}
+
 function AssetTypeManager({ assetTypes, assets, busyId, onCreate, onUpdate, onDelete, onClose }) {
   const [newName, setNewName] = useStatePF("");
   const [newColor, setNewColor] = useStatePF("#8B5CF6");
@@ -421,6 +514,27 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [adding, setAdding] = useStatePF(null);
   const [filter, setFilter] = useStatePF("all");
   const [busyId, setBusyId] = useStatePF(null);
+  const [goals, setGoals] = useStatePF([]);
+
+  const refreshGoals = async () => setGoals(await apiFetchPortfolioGoals());
+
+  const createGoal = async (payload) => {
+    setBusyId("goal:create");
+    try { await apiCreatePortfolioGoal(payload); await refreshGoals(); }
+    finally { setBusyId(null); }
+  };
+
+  const updateGoal = async (id, payload) => {
+    setBusyId(`goal:${id}`);
+    try { await apiUpdatePortfolioGoal(id, payload); await refreshGoals(); }
+    finally { setBusyId(null); }
+  };
+
+  const deleteGoal = async (id) => {
+    setBusyId(`goal:${id}`);
+    try { await apiDeletePortfolioGoal(id); await refreshGoals(); }
+    finally { setBusyId(null); }
+  };
   const [histories, setHistories] = useStatePF({});
   const [activeValuation, setActiveValuation] = useStatePF(null);
   const [managingTypes, setManagingTypes] = useStatePF(false);
@@ -434,9 +548,10 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   }), [assetTypes]);
 
   const fetchPortfolioData = async () => {
-    const [data, customAssetTypes] = await Promise.all([
+    const [data, customAssetTypes, goalList] = await Promise.all([
       apiFetchPortfolio(),
       apiFetchPortfolioAssetTypes(),
+      apiFetchPortfolioGoals(),
     ]);
     const items = [
       ...data.assets.map((item) => ({ itemType: "asset", item })),
@@ -446,13 +561,14 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       `${itemType}:${item.id}`,
       await apiFetchPortfolioValuations(itemType, item.id),
     ]));
-    return { ...data, assetTypes: customAssetTypes, histories: Object.fromEntries(entries) };
+    return { ...data, assetTypes: customAssetTypes, goals: goalList, histories: Object.fromEntries(entries) };
   };
 
   const applyPortfolioData = (data) => {
     setAssets(data.assets);
     setDebts(data.debts);
     setAssetTypes(data.assetTypes || []);
+    setGoals(data.goals || []);
     setHistories(data.histories);
   };
 
@@ -779,6 +895,9 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       </div>
 
       <div style={{ height: 28 }} />
+      <GoalsCard goals={goals} net={totals.net} busyId={busyId} privacy={privacy}
+        onCreate={createGoal} onUpdate={updateGoal} onDelete={deleteGoal} />
+
       <div className="panel">
         <div className="panel-hd">
           <h3>Assets <em>· holdings</em></h3>
