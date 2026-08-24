@@ -505,6 +505,13 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
 }
 
 /* ============ Portfolio Page ============ */
+const WEALTH_TABS = {
+  "pf-networth":    { title: <>Net worth, <i>plainly stated.</i></>, sub: "The headline number and its 12-month trend." },
+  "pf-holdings":    { title: <>Holdings, <i>owned and owed.</i></>, sub: "Every asset and liability — add, edit, and record values here." },
+  "pf-allocation":  { title: <>Allocation, <i>at a glance.</i></>, sub: "How your assets are distributed across classes." },
+  "pf-performance": { title: <>Performance, <i>over time.</i></>, sub: "What moved, by how much, over the window you pick." },
+};
+
 function PortfolioPage({ privacy, sub = "pf-networth" }) {
   const [assets, setAssets] = useStatePF([]);
   const [debts, setDebts] = useStatePF([]);
@@ -769,9 +776,10 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
   return (
     <div className="page">
       <div className="page-kicker">Portfolio</div>
-      <h1 className="page-title">Net worth, <i>plainly stated.</i></h1>
+      <h1 className="page-title">{(WEALTH_TABS[sub] || WEALTH_TABS["pf-networth"]).title}</h1>
       <div className="page-sub">
-        {assets.length} {assets.length === 1 ? "asset" : "assets"} and {debts.length} {debts.length === 1 ? "liability" : "liabilities"}, stored privately on your account.
+        {(WEALTH_TABS[sub] || WEALTH_TABS["pf-networth"]).sub}{" "}
+        {assets.length} {assets.length === 1 ? "asset" : "assets"} and {debts.length} {debts.length === 1 ? "liability" : "liabilities"} tracked.
       </div>
 
       {err && (
@@ -821,7 +829,8 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       <>
       <div style={{ height: 28 }} />
 
-      <div className="grid-2">
+      {sub === "pf-networth" && (
+      <div className="grid-2" style={{ gridTemplateColumns: "1fr" }}>
         <div className="hero">
           <div className="hero-row">
             <div>
@@ -875,7 +884,11 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
             </div>
           </div>
         </div>
+      </div>
+      )}
 
+      {sub === "pf-allocation" && (
+      <div className="grid-2">
         <div className="panel">
           <div className="panel-hd">
             <h3>Allocation</h3>
@@ -909,7 +922,10 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
           </div>
         </div>
       </div>
+      )}
 
+      {sub === "pf-holdings" && (
+      <>
       <div style={{ height: 28 }} />
       <div className="panel">
         <div className="panel-hd">
@@ -1072,11 +1088,13 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
           <div className="pf-table-summary-value debt">{fmtSGD(-debtTotal, privacy)}</div>
         </div>
       </div>
+      </>
+      )}
 
+      {sub === "pf-networth" && (
+      <>
       <div style={{ height: 24 }} />
-      <div className="grid-4">
-        <StatBlock label="Equity exposure" value={`${(((allocation.find(x => x.id === "equities")?.value || 0) + (allocation.find(x => x.id === "crypto")?.value || 0)) / Math.max(1, totals.A) * 100).toFixed(1)}%`} sub="Equities + crypto · target 35%" />
-        <StatBlock label="Liquidity" value={fmtSGD((allocation.find(x => x.id === "cash")?.value || 0), privacy)} sub="Cash & savings on hand" />
+      <div className="grid-2">
         {(() => {
           const top = debts.reduce((m, d) => ((d.apr || 0) > (m?.apr || 0) ? d : m), null);
           return (
@@ -1089,6 +1107,20 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
         })()}
         <StatBlock label="Net worth" value={fmtSGD(totals.net, privacy)} sub="Assets minus liabilities" accent />
       </div>
+      </>
+      )}
+
+      {sub === "pf-allocation" && (
+      <>
+      <div style={{ height: 24 }} />
+      <div className="grid-2">
+        <StatBlock label="Equity exposure" value={`${(((allocation.find(x => x.id === "equities")?.value || 0) + (allocation.find(x => x.id === "crypto")?.value || 0)) / Math.max(1, totals.A) * 100).toFixed(1)}%`} sub="Equities + crypto · target 35%" />
+        <StatBlock label="Liquidity" value={fmtSGD((allocation.find(x => x.id === "cash")?.value || 0), privacy)} sub="Cash & savings on hand" />
+      </div>
+      </>
+      )}
+
+      {sub === "pf-performance" && null}
       </>
       )}
       {activeItem && activeValuation && (
