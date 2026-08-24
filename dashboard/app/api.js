@@ -415,6 +415,25 @@ async function apiUpdatePortfolioDebt(id, payload) {
 async function apiDeletePortfolioDebt(id) {
   return _portfolioMutate(`/api/portfolio/debts/${encodeURIComponent(id)}`, "DELETE");
 }
+async function apiFetchPortfolioGoals() {
+  const res = await _fetch("/api/portfolio/goals");
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.goals || [];
+}
+
+async function apiCreatePortfolioGoal(payload) {
+  return _portfolioMutate("/api/portfolio/goals", "POST", payload);
+}
+
+async function apiUpdatePortfolioGoal(id, payload) {
+  return _portfolioMutate(`/api/portfolio/goals/${id}`, "PATCH", payload);
+}
+
+async function apiDeletePortfolioGoal(id) {
+  return _portfolioMutate(`/api/portfolio/goals/${id}`, "DELETE");
+}
+
 async function apiFetchPortfolioValuations(itemType, id) {
   const path = `/api/portfolio/${encodeURIComponent(itemType)}/${encodeURIComponent(id)}/valuations`;
   const res = await _fetch(path);
@@ -462,6 +481,7 @@ Object.assign(window, {
   apiCreatePortfolioAsset, apiUpdatePortfolioAsset, apiDeletePortfolioAsset,
   apiCreatePortfolioDebt, apiUpdatePortfolioDebt, apiDeletePortfolioDebt,
   apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation,
+  apiFetchPortfolioGoals, apiCreatePortfolioGoal, apiUpdatePortfolioGoal, apiDeletePortfolioGoal,
   apiAiReview,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,
