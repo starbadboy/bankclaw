@@ -187,6 +187,77 @@ function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
   });
 }
 
+function computePortfolioPerformance(assets, debts, histories, options = {}) {
+  const now = options.now instanceof Date ? options.now : new Date();
+  const nowIso = _portfolioIsoDate(now);
+  const months = options.months == null ? null : Math.max(1, Number(options.months) || 1);
+  let windowStart = null;
+  if (months) {
+    // clamp the day so month-end "now" doesn't roll the start into the wrong month
+    const lastDay = new Date(now.getFullYear(), now.getMonth() - months + 1, 0).getDate();
+    windowStart = _portfolioIsoDate(
+      new Date(now.getFullYear(), now.getMonth() - months, Math.min(now.getDate(), lastDay)),
+    );
+  }
+
+  const itemRow = (itemType, item) => {
+    const entries = _portfolioSortedValuations(histories?.[`${itemType}:${item.id}`])
+      .filter((entry) => entry.as_of_date <= nowIso);
+    const latest = entries[entries.length - 1] || null;
+    const current = latest ? latest.value : (Number.isFinite(Number(item.value)) ? Number(item.value) : null);
+
+    let baseline = null;
+    let inWindow = entries;
+    if (windowStart) {
+      baseline = _portfolioLatestAt(entries, windowStart);
+      inWindow = entries.filter((entry) => entry.as_of_date > windowStart);
+    }
+    // No pre-window baseline: fall back to the earliest point, which then needs
+    // a second point to measure against.
+    if (!baseline) {
+      baseline = inWindow.length >= 2 ? inWindow[0] : null;
+    } else if (inWindow.length === 0) {
+      baseline = null; // nothing moved inside the window -> no change to report
+    }
+
+    const sign = itemType === "debt" ? -1 : 1; // pay-down reads as improvement
+    let delta = null;
+    let deltaPct = null;
+    if (baseline && latest) {
+      delta = Math.round(sign * (latest.value - baseline.value) * 100) / 100;
+      deltaPct = baseline.value === 0 ? null : Math.round((delta / Math.abs(baseline.value)) * 10000) / 100;
+    }
+
+    const seriesEntries = baseline && baseline.as_of_date !== inWindow[0]?.as_of_date
+      ? [baseline, ...inWindow]
+      : inWindow;
+    const series = seriesEntries.map((entry) => sign * entry.value);
+
+    return { key: `${itemType}:${item.id}`, itemType, label: item.name, current, delta, deltaPct, series };
+  };
+
+  const items = [
+    ...(assets || []).map((asset) => itemRow("asset", asset)),
+    ...(debts || []).map((debt) => itemRow("debt", debt)),
+  ];
+
+  const totalCurrent = items.reduce((sum, row) => {
+    if (row.current == null) return sum;
+    return sum + (row.itemType === "debt" ? -row.current : row.current);
+  }, 0);
+  const totalDelta = items.reduce((sum, row) => sum + (row.delta ?? 0), 0);
+  const anyDelta = items.some((row) => row.delta != null);
+  const totalBaseline = totalCurrent - totalDelta;
+  const total = {
+    delta: anyDelta ? Math.round(totalDelta * 100) / 100 : null,
+    deltaPct: anyDelta && totalBaseline !== 0
+      ? Math.round((totalDelta / Math.abs(totalBaseline)) * 10000) / 100
+      : null,
+  };
+
+  return { items, total };
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────
 
 function fmtSGD(n, privacy = false) {
@@ -216,6 +287,6 @@ function relDateGroup(iso) {
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  buildPortfolioNetWorthHistory, getPortfolioItemSeries,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance,
   fmtSGD, fmtDate, relDateGroup,
 });

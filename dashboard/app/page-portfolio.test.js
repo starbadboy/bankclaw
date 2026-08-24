@@ -61,3 +61,25 @@ test("goal progress derives from net worth, capped, with computed done state", (
 test("dedicated goals page renders GoalsCard via the pf-goals sub", () => {
   assert.match(source, /sub === "pf-goals"/);
 });
+
+test("each wealth tab gates its own sections", () => {
+  assert.match(source, /sub === "pf-networth"/);
+  assert.match(source, /sub === "pf-holdings"/);
+  assert.match(source, /sub === "pf-allocation"/);
+  assert.match(source, /sub === "pf-performance"/);
+});
+
+test("wealth tab titles adapt per view", () => {
+  assert.match(source, /WEALTH_TABS\[sub\]/);
+});
+
+test("allocation tab includes a per-class breakdown table", () => {
+  assert.match(source, /% of assets/);
+  assert.match(source, /Positions/);
+});
+
+test("performance tab renders windowed changes from the data helper", () => {
+  assert.match(source, /computePortfolioPerformance/);
+  assert.match(source, /PERF_WINDOWS/);
+  assert.match(source, /row\.series/);
+});
