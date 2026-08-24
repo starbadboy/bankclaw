@@ -57,3 +57,7 @@ test("goal progress derives from net worth, capped, with computed done state", (
   assert.match(source, /Math\.min\(1,/);
   assert.match(source, /net >= goal\.target_amount|goal\.target_amount <= .*net/);
 });
+
+test("dedicated goals page renders GoalsCard via the pf-goals sub", () => {
+  assert.match(source, /sub === "pf-goals"/);
+});
