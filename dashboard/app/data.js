@@ -164,7 +164,7 @@ function buildHoldingChartData(points, mode, options = {}) {
     const b = bucket(p.date);
     const label = b === prev ? "" : labelFor(p.date);
     prev = b;
-    return { label, value: p[key] };
+    return { label, value: p[key], date: p.date };
   });
   let boundaries = labelled.filter((d) => d.label).length;
   // The first point always starts a bucket; drop its label when the next boundary is unusually close.

@@ -339,3 +339,8 @@ test("holding chart data drops the leading label when the next boundary is only 
   assert.equal(labels[0], "");
   assert.equal(labels[2], "Jun 26");
 });
+
+test("holding chart data carries each point's date for hover tooltips", () => {
+  const points = [{ date: "2026-08-03", price: 1.5, value: 150 }, { date: "2026-08-04", price: 1.6, value: 160 }];
+  assert.deepEqual(buildHoldingChartData(points, "value").map((d) => d.date), ["2026-08-03", "2026-08-04"]);
+});
