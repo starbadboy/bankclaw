@@ -144,6 +144,8 @@ function getPortfolioItemSeries(histories, itemType, itemId) {
   return _portfolioSortedValuations(entries).map((entry) => entry.value);
 }
 
+const _HOLDING_YEAR_LABEL_MONTHS = 36; // spans longer than this label years instead of months
+const _HOLDING_CROWDED_FIRST_LABEL = 0.4; // of average bucket width
 const _HOLDING_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // Market-history points [{date, price, value}] → NetWorthChart data [{label, value}].
@@ -154,7 +156,7 @@ function buildHoldingChartData(points, mode, options = {}) {
   const key = mode === "price" ? "price" : "value";
   const first = points[0].date, last = points[points.length - 1].date;
   const spanMonths = (Number(last.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(last.slice(5, 7)) - Number(first.slice(5, 7));
-  const byYear = spanMonths > 36;
+  const byYear = spanMonths > _HOLDING_YEAR_LABEL_MONTHS;
   const bucket = (date) => (byYear ? date.slice(0, 4) : date.slice(0, 7));
   const labelFor = (date) => (byYear ? date.slice(0, 4) : `${_HOLDING_MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(2, 4)}`);
   let prev = null;
@@ -166,8 +168,9 @@ function buildHoldingChartData(points, mode, options = {}) {
   });
   let boundaries = labelled.filter((d) => d.label).length;
   // The first point always starts a bucket; drop its label when the next boundary is unusually close.
+  // ponytail: 0.4-of-average-spacing overlap guess; measure text width if labels still collide.
   const secondBoundary = labelled.findIndex((d, i) => i > 0 && d.label);
-  if (secondBoundary > 0 && secondBoundary < (labelled.length / boundaries) * 0.4) {
+  if (secondBoundary > 0 && secondBoundary < (labelled.length / boundaries) * _HOLDING_CROWDED_FIRST_LABEL) {
     labelled[0] = { ...labelled[0], label: "" };
     boundaries -= 1;
   }

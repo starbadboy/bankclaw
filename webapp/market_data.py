@@ -7,12 +7,13 @@ Daily closes come from yfinance; non-SGD tickers are converted with the
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 
 BASE_CURRENCY = "SGD"
 RANGES = {"1M": ("1mo", "1d"), "3M": ("3mo", "1d"), "1Y": ("1y", "1d"), "All": ("max", "1wk")}
 _TTL_SECONDS = 3600
-# ponytail: per-process dict cache; move to a Mongo collection if the app runs multi-worker.
-_CACHE: dict[tuple[str, str], tuple[float, tuple[str, dict[str, float]]]] = {}
+# Feeds that quote in minor units (pence, cents): major-unit code and the scale to apply to closes.
+_MINOR_UNITS = {"GBp": ("GBP", 0.01), "ZAc": ("ZAR", 0.01), "ILA": ("ILS", 0.01)}
 
 
 def fetch_history(ticker: str, range_key: str) -> tuple[str, dict[str, float]]:
@@ -35,14 +36,18 @@ def fetch_history(ticker: str, range_key: str) -> tuple[str, dict[str, float]]:
     return currency, {ts.strftime("%Y-%m-%d"): float(v) for ts, v in closes.items()}
 
 
+# ponytail: per-process LRU keyed by a 1h time bucket; move to a Mongo collection if the app runs multi-worker.
+@lru_cache(maxsize=256)
+def _fetch_bucketed(ticker: str, range_key: str, _bucket: int) -> tuple[str, dict[str, float]]:
+    return fetch_history(ticker, range_key)
+
+
 def _cached_fetch(ticker: str, range_key: str) -> tuple[str, dict[str, float]]:
-    now = time.monotonic()
-    hit = _CACHE.get((ticker, range_key))
-    if hit and now - hit[0] < _TTL_SECONDS:
-        return hit[1]
-    result = fetch_history(ticker, range_key)
-    _CACHE[(ticker, range_key)] = (now, result)
-    return result
+    return _fetch_bucketed(ticker, range_key, int(time.monotonic() // _TTL_SECONDS))
+
+
+def clear_cache() -> None:
+    _fetch_bucketed.cache_clear()
 
 
 def build_market_series(closes: dict[str, float], fx: dict[str, float] | None, units: float) -> list[dict]:
@@ -68,7 +73,14 @@ def get_market_history(ticker: str, units: float, range_key: str) -> dict:
     if range_key not in RANGES:
         raise ValueError(f"range must be one of {', '.join(RANGES)}")
     currency, closes = _cached_fetch(ticker, range_key)
-    fx = None if currency == BASE_CURRENCY else _cached_fetch(f"{currency}{BASE_CURRENCY}=X", range_key)[1]
+    if currency in _MINOR_UNITS:
+        currency, scale = _MINOR_UNITS[currency]
+        closes = {day: close * scale for day, close in closes.items()}
+    fx = None
+    if currency != BASE_CURRENCY:
+        fx = _cached_fetch(f"{currency}{BASE_CURRENCY}=X", range_key)[1]
+        if not fx:
+            raise LookupError(f"No {currency}{BASE_CURRENCY} rates to convert with")
     return {
         "ticker": ticker,
         "currency": currency,

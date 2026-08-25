@@ -23,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from webapp.auth import create_auth_token, verify_auth_token
 from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
-from webapp.market_data import get_market_history
+from webapp.market_data import RANGES, get_market_history
 
 # optional MongoDB — gracefully degrade when not configured
 try:
@@ -537,10 +537,11 @@ async def get_asset_market_history(asset_id: str, range: str = "1Y", user: str =
         raise HTTPException(status_code=400, detail="Asset not found")
     if not asset.get("ticker") or asset.get("units") is None:
         raise HTTPException(status_code=400, detail="Set a ticker and units on this asset first")
+    if range not in RANGES:
+        raise HTTPException(status_code=400, detail=f"range must be one of {', '.join(RANGES)}")
     try:
-        return get_market_history(asset["ticker"], asset["units"], range)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        # yfinance is blocking HTTP; keep it off the event loop like the PDF imports below.
+        return await asyncio.to_thread(get_market_history, asset["ticker"], asset["units"], range)
     except Exception as exc:  # noqa: BLE001 — feed failures of any kind surface as 502
         raise HTTPException(status_code=502, detail=f"Market data unavailable: {exc}") from exc
 

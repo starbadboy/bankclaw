@@ -227,11 +227,15 @@ def test_market_history_maps_feed_failures_to_502_and_bad_range_to_400():
 
     with (
         patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
-        patch("webapp.api.get_market_history", side_effect=ValueError("range must be one of 1M, 3M, 1Y, All")),
+        patch("webapp.api.get_market_history", side_effect=ValueError("pandas: unsupported period")) as feed,
     ):
+        with pytest.raises(HTTPException) as value_exc:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
         with pytest.raises(HTTPException) as range_exc:
             asyncio.run(get_asset_market_history("a1", range="5Y", user="owner@example.com"))
+    assert value_exc.value.status_code == 502  # library ValueErrors are feed failures, not client errors
     assert range_exc.value.status_code == 400
+    assert feed.call_count == 1  # bad range is rejected before the feed is called
 
 
 def test_market_history_unknown_asset_is_400():

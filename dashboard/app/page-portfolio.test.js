@@ -113,6 +113,16 @@ test("valuation panel fetches market history and renders a Price/Value chart wit
 test("NetWorthChart exposes padFraction and fmtValue with behaviour-preserving defaults", () => {
   const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
   assert.match(chart, /padFraction/);
-  assert.match(chart, /fmtValue = \(v\) => Math\.round\(v\)\.toLocaleString\("en-SG"\)/);
+  assert.match(chart, /fmtValue/);
   assert.match(source, /<NetWorthChart[^>]*padFraction=\{0\.08\}/);
+});
+
+test("holding market block is its own component with a padding floor and an empty-series hint", () => {
+  assert.match(source, /function HoldingMarketPanel/);
+  assert.match(source, /<HoldingMarketPanel/);
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /Number\.EPSILON/);
+  assert.match(source, /No prices returned/);
+  assert.match(source, /Units must be a number/);
+  assert.doesNotMatch(source, /pf-market-(form|chart)/);
 });

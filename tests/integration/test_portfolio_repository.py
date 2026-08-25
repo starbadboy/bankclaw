@@ -403,3 +403,18 @@ def test_update_asset_sets_units_and_rejects_bad_values():
     set_doc = collections["portfolio_assets"].find_one_and_update.call_args.args[1]["$set"]
     assert set_doc["units"] == 672.0
     assert set_doc["ticker"] == "ADSK"
+
+
+def test_update_asset_uppercases_ticker_and_rejects_unsafe_symbols():
+    db, collections = _portfolio_db()
+    asset_id = ObjectId()
+    collections["portfolio_assets"].find_one_and_update.return_value = {"_id": asset_id, "ticker": "D05.SI"}
+
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        update_asset("owner@example.com", str(asset_id), {"ticker": "d05.si"})
+        for bad in ("../../v1/test", "AD SK", "A?B", "x" * 17):
+            with pytest.raises(ValueError):
+                update_asset("owner@example.com", str(asset_id), {"ticker": bad})
+
+    set_doc = collections["portfolio_assets"].find_one_and_update.call_args.args[1]["$set"]
+    assert set_doc["ticker"] == "D05.SI"

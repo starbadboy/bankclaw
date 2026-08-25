@@ -46,7 +46,7 @@ def _fake_fetch(ticker, range_key):
 
 
 def test_get_market_history_converts_usd_and_skips_fx_for_sgd():
-    market_data._CACHE.clear()
+    market_data.clear_cache()
     with patch("webapp.market_data.fetch_history", side_effect=_fake_fetch) as fetch:
         usd = get_market_history("ADSK", 672, "1Y")
         sgd = get_market_history("D05.SI", 10, "1Y")
@@ -59,7 +59,7 @@ def test_get_market_history_converts_usd_and_skips_fx_for_sgd():
 
 
 def test_get_market_history_caches_fetches_for_an_hour_independent_of_units():
-    market_data._CACHE.clear()
+    market_data.clear_cache()
     clock = [1000.0]
     with (
         patch("webapp.market_data.fetch_history", side_effect=_fake_fetch) as fetch,
@@ -78,3 +78,32 @@ def test_get_market_history_caches_fetches_for_an_hour_independent_of_units():
 def test_get_market_history_rejects_unknown_range():
     with pytest.raises(ValueError):
         get_market_history("ADSK", 1, "5Y")
+
+
+def test_get_market_history_refuses_to_convert_without_fx_rates():
+    market_data.clear_cache()
+
+    def fetch(ticker, range_key):
+        return ("USD", {"2026-08-01": 100.0}) if ticker == "ADSK" else ("SGD", {})
+
+    with patch("webapp.market_data.fetch_history", side_effect=fetch):
+        with pytest.raises(LookupError):
+            get_market_history("ADSK", 1, "1Y")
+
+
+def test_get_market_history_scales_minor_unit_currencies_and_pairs_the_major_unit():
+    market_data.clear_cache()
+
+    def fetch(ticker, range_key):
+        if ticker == "SHEL.L":
+            return "GBp", {"2026-08-01": 2500.0}  # pence
+        if ticker == "GBPSGD=X":
+            return "SGD", {"2026-08-01": 1.7}
+        raise LookupError(ticker)
+
+    with patch("webapp.market_data.fetch_history", side_effect=fetch) as mock_fetch:
+        result = get_market_history("SHEL.L", 10, "1Y")
+
+    assert result["currency"] == "GBP"
+    assert result["points"] == [{"date": "2026-08-01", "price": 42.5, "value": 425.0}]
+    assert [c.args[0] for c in mock_fetch.call_args_list] == ["SHEL.L", "GBPSGD=X"]

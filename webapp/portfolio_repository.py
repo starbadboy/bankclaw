@@ -158,6 +158,18 @@ def _validate_asset_kind(user_email: str, kind: str) -> str:
     return kind
 
 
+_TICKER = re.compile(r"^[A-Z0-9.^=\-]{1,16}$")
+
+
+def _clean_ticker(raw: object) -> str | None:
+    ticker = (_clean_str(raw, field="ticker", max_len=32, required=False) or "").upper()
+    if not ticker:
+        return None
+    if not _TICKER.match(ticker):
+        raise ValueError("ticker may only contain letters, digits, . ^ = - (max 16)")
+    return ticker
+
+
 def _coerce_units(raw: object) -> float | None:
     if raw is None or raw == "":
         return None
@@ -513,7 +525,7 @@ def create_asset(user_email: str, payload: dict) -> dict:
     as_of_date = _normalize_as_of_date(payload.get("as_of_date") or _today_iso())
     base = _coerce_value(payload.get("base", value), field="base")
     sub = _clean_str(payload.get("sub"), field="sub", required=False) or "Manual entry"
-    ticker = _clean_str(payload.get("ticker"), field="ticker", max_len=16, required=False) or None
+    ticker = _clean_ticker(payload.get("ticker"))
     units = _coerce_units(payload.get("units"))
 
     doc = {
@@ -557,7 +569,7 @@ def update_asset(user_email: str, asset_id: str, payload: dict) -> dict:
     if "base" in payload:
         set_doc["base"] = _coerce_value(payload["base"], field="base")
     if "ticker" in payload:
-        set_doc["ticker"] = _clean_str(payload["ticker"], field="ticker", max_len=16, required=False) or None
+        set_doc["ticker"] = _clean_ticker(payload["ticker"])
     if "units" in payload:
         set_doc["units"] = _coerce_units(payload["units"])
     if not set_doc:
