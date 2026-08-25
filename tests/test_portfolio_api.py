@@ -259,6 +259,24 @@ def test_market_history_hides_internal_errors_but_keeps_feed_messages():
 
     with (
         patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=ValueError("could not convert string to float: 'n/a'")),
+    ):
+        with pytest.raises(HTTPException) as library:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert library.value.detail == "Market data unavailable"  # library ValueErrors are internal too
+
+    legacy_bad = {"id": "a1", "name": "X", "ticker": "../../v1/test", "units": 1.0}
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(legacy_bad)),
+        patch("webapp.api.get_market_history") as never,
+    ):
+        with pytest.raises(HTTPException) as unsafe:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert unsafe.value.status_code == 400
+    never.assert_not_called()
+
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
         patch("webapp.api.get_market_history", side_effect=MarketDataError("No price data for ADSK")),
     ):
         with pytest.raises(HTTPException) as feed:

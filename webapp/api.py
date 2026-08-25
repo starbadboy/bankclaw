@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from webapp.auth import create_auth_token, verify_auth_token
 from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
-from webapp.market_data import RANGES, MarketDataError, get_market_history
+from webapp.market_data import RANGES, TICKER_PATTERN, MarketDataError, get_market_history
 
 # optional MongoDB — gracefully degrade when not configured
 try:
@@ -540,10 +540,13 @@ async def get_asset_market_history(asset_id: str, range: str = "1Y", user: str =
         raise HTTPException(status_code=400, detail="Set a ticker and units on this asset first")
     if range not in RANGES:
         raise HTTPException(status_code=400, detail=f"range must be one of {', '.join(RANGES)}")
+    ticker = str(asset["ticker"]).upper()
+    if not TICKER_PATTERN.match(ticker):
+        raise HTTPException(status_code=400, detail=f"Ticker {asset['ticker']!r} is not a valid symbol; edit it first")
     try:
         # yfinance is blocking HTTP; keep it off the event loop like the PDF imports below.
-        return await asyncio.to_thread(get_market_history, asset["ticker"], asset["units"], range)
-    except (MarketDataError, ValueError) as exc:  # our own feed/validation messages are safe to show
+        return await asyncio.to_thread(get_market_history, ticker, asset["units"], range)
+    except MarketDataError as exc:  # our own feed messages (unknown symbol, no FX) are safe to show
         raise HTTPException(status_code=502, detail=f"Market data unavailable: {exc}") from exc
     except Exception as exc:  # noqa: BLE001 — anything else is internal; log it, don't echo it
         logging.getLogger(__name__).warning("market history failed for %s: %r", asset["ticker"], exc)

@@ -3,7 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from webapp import market_data
-from webapp.market_data import build_market_series, get_market_history
+from webapp.market_data import MarketDataError, build_market_series, get_market_history
 
 
 def test_build_series_converts_with_forward_filled_fx():
@@ -42,7 +42,7 @@ def _fake_fetch(ticker, range_key):
         return "SGD", {"2026-08-01": 1.25}
     if ticker == "D05.SI":
         return "SGD", {"2026-08-01": 40.0}
-    raise LookupError(ticker)
+    raise MarketDataError(ticker)
 
 
 def test_get_market_history_converts_usd_and_skips_fx_for_sgd():
@@ -87,7 +87,7 @@ def test_get_market_history_refuses_to_convert_without_fx_rates():
         return ("USD", {"2026-08-01": 100.0}) if ticker == "ADSK" else ("SGD", {})
 
     with patch("webapp.market_data.fetch_history", side_effect=fetch):
-        with pytest.raises(LookupError):
+        with pytest.raises(MarketDataError):
             get_market_history("ADSK", 1, "1Y")
 
 
@@ -99,7 +99,7 @@ def test_get_market_history_scales_minor_unit_currencies_and_pairs_the_major_uni
             return "GBp", {"2026-08-01": 2500.0}  # pence
         if ticker == "GBPSGD=X":
             return "SGD", {"2026-08-01": 1.7}
-        raise LookupError(ticker)
+        raise MarketDataError(ticker)
 
     with patch("webapp.market_data.fetch_history", side_effect=fetch) as mock_fetch:
         result = get_market_history("SHEL.L", 10, "1Y")
@@ -114,4 +114,12 @@ def test_get_market_history_rejects_unsafe_tickers_before_touching_the_feed():
         for bad in ("../../v1/test", "AD SK", "a?b"):
             with pytest.raises(ValueError):
                 get_market_history(bad, 1, "1Y")
-    fetch.assert_not_called()
+        fetch.assert_not_called()
+
+
+def test_get_market_history_uppercases_legacy_lowercase_tickers():
+    market_data.clear_cache()
+    with patch("webapp.market_data.fetch_history", side_effect=_fake_fetch) as fetch:
+        result = get_market_history("d05.si", 10, "1Y")
+    assert result["ticker"] == "D05.SI"
+    assert fetch.call_args_list[0].args[0] == "D05.SI"
