@@ -24,6 +24,10 @@ uv run pytest tests/test_app.py
 # Run a single test
 uv run pytest tests/test_app.py::test_name
 
+# Dashboard JS tests + JSX syntax check (regex tests don't catch broken JSX)
+for f in dashboard/app/*.test.js; do node --test "$f"; done
+npx esbuild dashboard/app/*.jsx --loader:.jsx=jsx --outdir=/tmp/jsxcheck
+
 # Lint / format
 uv run ruff check .
 uv run ruff format .
@@ -141,3 +145,9 @@ Default canonical labels (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 ### Domain docs
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Lessons (same mistake twice → recorded here)
+
+- Don't judge test results through grep pipelines (`grep -c`, `grep -qv` chains misread counts and inverted matches); use the test runner's exit code or read its summary lines directly. (2026-08-24)
+- JS date math has bitten twice (month-end rollover in `new Date(y, m-N, d)`; UTC-midnight shift when round-tripping "YYYY-MM-DD" through `new Date()` + `getDate()`). Rules: bucket by parsing the ISO string directly, clamp day arithmetic at month boundaries, and run date-heavy suites under `TZ=America/New_York` as well as local. (2026-08-25)
+- `uv run pytest .` exceeds 2 minutes (tests/e2e is slow/network-bound); for the fast loop run `uv run pytest tests/integration tests/unit tests/test_*.py`. Suite is also ordering-sensitive: `tests/test_portfolio_api.py` stubs `sys.modules["pandas"/"streamlit"]` at module level and poisons later imports when collected first. (2026-08-24)
