@@ -38,6 +38,101 @@ function _ctMonthsBetween(start, end) {
   return out;
 }
 
+function SpendingTrendChart({ trend, height = 220, privacy = false }) {
+  const wrapRef = useRefIN(null);
+  const [w, setW] = useStateIN(700);
+  const [hoverDay, setHoverDay] = useStateIN(null);
+
+  useEffectIN(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver((ents) => { for (const e of ents) setW(e.contentRect.width); });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const padL = 44, padR = 12, padTop = 14, padBottom = 28;
+  const innerW = Math.max(50, w - padL - padR);
+  const innerH = Math.max(40, height - padTop - padBottom);
+  const maxVal = Math.max(1, ...trend.flatMap((m) => m.cumulative));
+  const xAt = (day) => padL + ((day - 1) / 30) * innerW;   // fixed 1..31 domain — shorter months end early
+  const yAt = (v) => padTop + (1 - v / maxVal) * innerH;
+  const ticks = [0, 0.5, 1].map((f) => f * maxVal);
+  const fmtTick = _inFmtTick;
+
+  const handleMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const day = Math.max(1, Math.min(31, Math.round(((x - padL) / Math.max(1, innerW)) * 30) + 1));
+    setHoverDay(day);
+  };
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <svg width="100%" height={height} style={{ display: "block", filter: privacy ? "blur(6px)" : "none" }}
+        onMouseMove={handleMove} onMouseLeave={() => setHoverDay(null)}>
+        {ticks.map((v, i) => (
+          <g key={i}>
+            <line x1={padL} x2={w - padR} y1={yAt(v)} y2={yAt(v)} stroke="var(--rule)" strokeWidth="1" />
+            <text x={padL - 8} y={yAt(v) + 3.5} textAnchor="end" fontSize="10" fill="var(--ink-4)" className="mono">{fmtTick(v)}</text>
+          </g>
+        ))}
+        {trend.map((m, mi) => {
+          const age = trend.length - 1 - mi;               // 0 = newest
+          const pts = m.cumulative.map((v, di) => `${xAt(di + 1)},${yAt(v)}`).join(" ");
+          return (
+            <polyline key={m.key} points={pts} fill="none"
+              stroke={age === 0 ? "var(--debit)" : "var(--ink-3)"}
+              strokeWidth={age === 0 ? 2 : 1.4}
+              strokeDasharray={age === 0 ? "none" : "5 4"}
+              opacity={age === 0 ? 1 : Math.max(0.25, 0.7 - age * 0.12)} />
+          );
+        })}
+        {trend.map((m) => {
+          if (!m.isCurrent || m.cumulative.length === 0) return null;
+          const lastDay = m.cumulative.length;
+          return (
+            <g key={`${m.key}-end`}>
+              <circle cx={xAt(lastDay)} cy={yAt(m.cumulative[lastDay - 1])} r="5" fill="var(--debit)" opacity="0.25" />
+              <circle cx={xAt(lastDay)} cy={yAt(m.cumulative[lastDay - 1])} r="2.5" fill="var(--debit)" />
+            </g>
+          );
+        })}
+        {hoverDay != null && (
+          <line x1={xAt(hoverDay)} x2={xAt(hoverDay)} y1={padTop} y2={height - padBottom} stroke="var(--ink-4)" strokeDasharray="2 3" />
+        )}
+        <text x={padL} y={height - 6} fontSize="10" fill="var(--ink-4)" className="mono">1</text>
+        <text x={xAt(31)} y={height - 6} textAnchor="end" fontSize="10" fill="var(--ink-4)" className="mono">31</text>
+      </svg>
+      {hoverDay != null && (
+        <div style={{ position: "absolute", top: 8, right: 8, background: "var(--panel-2, var(--panel))", border: "1px solid var(--rule)",
+          borderRadius: 8, padding: "8px 12px", fontSize: 12, pointerEvents: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.12)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Total to day {hoverDay}</div>
+          {trend.map((m) => {
+            const has = hoverDay <= m.cumulative.length;
+            return (
+              <div key={m.key} style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
+                <span style={{ color: m.isCurrent ? "var(--debit)" : "var(--ink-3)" }}>{m.label}{m.isCurrent ? " · now" : ""}</span>
+                <span className="tnum">{has ? fmtSGD(m.cumulative[hoverDay - 1], privacy) : "—"}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="legend" style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11 }}>
+        {trend.map((m, mi) => {
+          const age = trend.length - 1 - mi;
+          return (
+            <span key={m.key} style={{ opacity: m.isCurrent ? 1 : Math.max(0.4, 0.8 - age * 0.1) }}>
+              <span className="sw" style={{ background: m.isCurrent ? "var(--debit)" : "var(--ink-3)" }}></span>
+              {m.label}{m.isCurrent ? " (to date)" : ""}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
   const wrapRef = useRefIN(null);
   const [w, setW] = useStateIN(700);
@@ -57,7 +152,7 @@ function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
   const xAt = (i) => padL + (months.length <= 1 ? innerW / 2 : (i * innerW) / (months.length - 1));
   const yAt = (v) => padTop + (1 - v / maxVal) * innerH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * maxVal);
-  const fmtTick = (t) => t >= 1000 ? `${(t / 1000).toFixed(t >= 10000 ? 0 : 1)}k` : Math.round(t).toString();
+  const fmtTick = _inFmtTick;
   const selectedTotal = series.reduce((total, s) => total + (s.values[hoverIdx] || 0), 0);
 
   const handleMove = (e) => {
@@ -174,6 +269,11 @@ function detectRecurring(transactions) {
   return results.sort((a, b) => b.amt - a.amt);
 }
 
+function _inFmtTick(v) { return v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : Math.round(v).toString(); }
+
+// Trend window per range id: lines rendered = current month-to-date + previous.
+const TREND_MONTHS = { "1m": 2, "3m": 3, "6m": 6, "all": 12 };
+
 const _IN_RANGES = [
   { id: "1m",  label: "Last month" },
   { id: "3m",  label: "Last 3 months" },
@@ -232,6 +332,18 @@ function InsightsPage({ transactions, privacy }) {
       .map(([, v]) => v)
       .slice(-12);
   }, [filtered, excludedCats]);
+
+  // ── Spending trend (cumulative per-month lines, toggled in Cash flow panel) ──
+  // Explicit window per range id — never parse the id; "all" is capped so the
+  // overlay stays readable. A new range id falls back to 6, visibly, not to NaN.
+  const [trendView, setTrendView] = useStateIN("cashflow");
+  const trend = useMemoIN(
+    () => computeSpendingTrend(transactions, {
+      rangeMonths: TREND_MONTHS[range] ?? 6,
+      excludedCategories: excludedCats,
+    }),
+    [transactions, range, excludedCats],
+  );
 
   // ── Category trend (multi-line by month) ────────────────────────────────
   // Trend windows end at LAST month — current month is excluded since data is
@@ -399,12 +511,20 @@ function InsightsPage({ transactions, privacy }) {
                   {excludedCats.size} hidden
                 </span>
               )}
+              <div className="seg">
+                <button className={trendView === "cashflow" ? "on" : ""} aria-pressed={trendView === "cashflow"} onClick={() => setTrendView("cashflow")}>Cash flow</button>
+                <button className={trendView === "trend" ? "on" : ""} aria-pressed={trendView === "trend"} onClick={() => setTrendView("trend")}>Spending trend</button>
+              </div>
+              {trendView === "cashflow" && (<>
               <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>
               <span><span className="sw" style={{ background: "oklch(0.48 0.11 35)" }}></span>Out</span>
+              </>)}
             </div>
           </div>
           <div className="panel-pad">
-            <Bars data={months} height={220} privacy={privacy} />
+            {trendView === "cashflow"
+              ? <Bars data={months} height={220} privacy={privacy} />
+              : <SpendingTrendChart trend={trend} height={220} privacy={privacy} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--rule)" }}>
               <div><div className="tag">6-month income</div><div className="display tnum" style={{ fontSize: 24, color: "var(--credit)" }}>{fmtSGD(months.reduce((s,m)=>s+m.income,0), privacy)}</div></div>
               <div><div className="tag">6-month spend</div><div className="display tnum" style={{ fontSize: 24, color: "var(--debit)" }}>{fmtSGD(-months.reduce((s,m)=>s+m.spend,0), privacy)}</div></div>

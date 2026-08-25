@@ -258,6 +258,46 @@ function computePortfolioPerformance(assets, debts, histories, options = {}) {
   return { items, total };
 }
 
+function computeSpendingTrend(transactions, options = {}) {
+  const now = options.now instanceof Date ? options.now : new Date();
+  const excluded = options.excludedCategories || new Set();
+  const monthCount = Math.max(2, Number(options.rangeMonths) || 2);
+
+  const months = [];
+  for (let i = monthCount - 1; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const isCurrent = i === 0;
+    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    const lastDay = isCurrent ? now.getDate() : daysInMonth;
+    months.push({
+      key: `${start.getFullYear()}-${String(start.getMonth()).padStart(2, "0")}`,
+      label: start.toLocaleDateString("en-GB", { month: "short" }).toUpperCase(),
+      cumulative: new Array(lastDay).fill(0),
+      isCurrent,
+    });
+  }
+  const byKey = new Map(months.map((m) => [m.key, m]));
+
+  (transactions || []).forEach((t) => {
+    if (t.amount >= 0) return;                 // money-out only
+    if (excluded.has(t.category)) return;
+    // Parse the ISO string directly — new Date("YYYY-MM-DD") is UTC midnight and
+    // shifts a day west of UTC, migrating 1st-of-month spend into the prior month.
+    const [ty, tm, td] = String(t.date).slice(0, 10).split("-").map(Number);
+    if (!ty || !tm || !td) return;
+    const m = byKey.get(`${ty}-${String(tm - 1).padStart(2, "0")}`);
+    if (!m) return;
+    if (td > m.cumulative.length) return;      // future-dated inside current month
+    m.cumulative[td - 1] += -t.amount;
+  });
+
+  months.forEach((m) => {
+    for (let i = 1; i < m.cumulative.length; i++) m.cumulative[i] += m.cumulative[i - 1];
+    for (let i = 0; i < m.cumulative.length; i++) m.cumulative[i] = Math.round(m.cumulative[i] * 100) / 100;
+  });
+  return months;
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────
 
 function fmtSGD(n, privacy = false) {
@@ -287,6 +327,6 @@ function relDateGroup(iso) {
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend,
   fmtSGD, fmtDate, relDateGroup,
 });
