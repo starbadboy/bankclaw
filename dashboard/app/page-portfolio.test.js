@@ -126,3 +126,11 @@ test("holding market block is its own component with a padding floor and an empt
   assert.match(source, /Units must be a number/);
   assert.doesNotMatch(source, /pf-market-(form|chart)/);
 });
+
+test("NetWorthChart shows a hover tooltip with the point's date and value", () => {
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /onMouseMove/);
+  assert.match(chart, /onMouseLeave/);
+  assert.match(chart, /hoverIdx/);
+  assert.match(chart, /\{hovered\.date\} · S\$ \{fmtValue\(hovered\.value\)\}/);
+});

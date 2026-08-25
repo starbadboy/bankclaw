@@ -54,6 +54,7 @@ function NetWorthChart({
 }) {
   const wrapRef = React.useRef(null);
   const [w, setW] = useStatePF(700);
+  const [hoverIdx, setHoverIdx] = useStatePF(null);
   useEffectPF(() => {
     if (!wrapRef.current) return;
     const ro = new ResizeObserver((ents) => { for (const e of ents) setW(e.contentRect.width); });
@@ -82,12 +83,22 @@ function NetWorthChart({
   const linePath = data.map((d, i) => `${i ? "L" : "M"} ${xAt(i)} ${yAt(d.value)}`).join(" ");
   const areaPath = `${linePath} L ${xAt(data.length - 1)} ${height - padY} L ${xAt(0)} ${height - padY} Z`;
 
+  const handleMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const idx = Math.round(((e.clientX - rect.left - padX) / Math.max(1, w - padX * 2)) * (data.length - 1));
+    setHoverIdx(Math.max(0, Math.min(data.length - 1, idx)));
+  };
+  const hovered = hoverIdx != null && hoverIdx < data.length ? data[hoverIdx] : null;
+  const hoverX = hovered ? xAt(hoverIdx) : 0;
+  const hoverAnchor = hoverX > w * 0.75 ? "end" : hoverX < w * 0.25 ? "start" : "middle";
+
   const ticks = 4;
   const tickVals = [];
   for (let i = 0; i <= ticks; i++) tickVals.push(min + ((max - min) * i) / ticks);
 
   return (
-    <div ref={wrapRef} style={{ height, filter: privacy ? "blur(10px)" : "none", position: "relative" }}>
+    <div ref={wrapRef} style={{ height, filter: privacy ? "blur(10px)" : "none", position: "relative" }}
+      onMouseMove={handleMove} onMouseLeave={() => setHoverIdx(null)}>
       <svg width={w} height={height} style={{ overflow: "visible" }}>
         <defs>
           <linearGradient id="nw-grad" x1="0" y1="0" x2="0" y2="1">
@@ -120,12 +131,24 @@ function NetWorthChart({
           <circle key={i} cx={xAt(i)} cy={yAt(data[i].value)} r="3.5"
             fill="var(--paper)" stroke="var(--accent)" strokeWidth="1.5" />
         ))}
-        <g transform={`translate(${xAt(data.length - 1)}, ${yAt(data[data.length - 1].value) - 14})`}>
-          <text textAnchor="middle" fontSize="11"
-            fill="var(--accent)" fontFamily="Bodoni Moda, serif" fontWeight="500">
-            S$ {fmtValue(data[data.length - 1].value)}
-          </text>
-        </g>
+        {!hovered && (
+          <g transform={`translate(${xAt(data.length - 1)}, ${yAt(data[data.length - 1].value) - 14})`}>
+            <text textAnchor="middle" fontSize="11"
+              fill="var(--accent)" fontFamily="Bodoni Moda, serif" fontWeight="500">
+              S$ {fmtValue(data[data.length - 1].value)}
+            </text>
+          </g>
+        )}
+        {hovered && (
+          <g>
+            <line x1={hoverX} x2={hoverX} y1={padY} y2={height - padY} stroke="var(--ink-4)" strokeDasharray="3 3" />
+            <circle cx={hoverX} cy={yAt(hovered.value)} r="4" fill="var(--accent)" stroke="var(--paper)" strokeWidth="1.5" />
+            <text x={hoverX} y={padY - 10} textAnchor={hoverAnchor} fontSize="10.5" fill="var(--ink)"
+              fontFamily="JetBrains Mono, monospace" letterSpacing="0.04em">
+              {hovered.date} · S$ {fmtValue(hovered.value)}
+            </text>
+          </g>
+        )}
       </svg>
     </div>
   );
