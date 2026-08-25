@@ -132,5 +132,5 @@ test("NetWorthChart shows a hover tooltip with the point's date and value", () =
   assert.match(chart, /onMouseMove/);
   assert.match(chart, /onMouseLeave/);
   assert.match(chart, /hoverIdx/);
-  assert.match(chart, /d\.date \|\| d\.label|hovered\.date \|\| hovered\.label/);
+  assert.match(chart, /\{hovered\.date\} · S\$ \{fmtValue\(hovered\.value\)\}/);
 });

@@ -85,7 +85,7 @@ function NetWorthChart({
 
   const handleMove = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const idx = data.length === 1 ? 0 : Math.round(((e.clientX - rect.left - padX) / Math.max(1, w - padX * 2)) * (data.length - 1));
+    const idx = Math.round(((e.clientX - rect.left - padX) / Math.max(1, w - padX * 2)) * (data.length - 1));
     setHoverIdx(Math.max(0, Math.min(data.length - 1, idx)));
   };
   const hovered = hoverIdx != null && hoverIdx < data.length ? data[hoverIdx] : null;
@@ -140,12 +140,12 @@ function NetWorthChart({
           </g>
         )}
         {hovered && (
-          <g pointerEvents="none">
+          <g>
             <line x1={hoverX} x2={hoverX} y1={padY} y2={height - padY} stroke="var(--ink-4)" strokeDasharray="3 3" />
             <circle cx={hoverX} cy={yAt(hovered.value)} r="4" fill="var(--accent)" stroke="var(--paper)" strokeWidth="1.5" />
             <text x={hoverX} y={padY - 10} textAnchor={hoverAnchor} fontSize="10.5" fill="var(--ink)"
               fontFamily="JetBrains Mono, monospace" letterSpacing="0.04em">
-              {hovered.date || hovered.label} · S$ {fmtValue(hovered.value)}
+              {hovered.date} · S$ {fmtValue(hovered.value)}
             </text>
           </g>
         )}
