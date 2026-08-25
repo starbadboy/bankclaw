@@ -294,3 +294,48 @@ test("spending trend keeps first-of-month spend in its own month regardless of t
   assert.equal(august.cumulative[0], 500);   // Aug 1 stays in August
   assert.equal(july.cumulative[30], 0);      // never migrates into July
 });
+
+test("holding chart data picks the series by mode and labels month boundaries only", () => {
+  const points = [
+    { date: "2026-07-30", price: 1.5, value: 150 },
+    { date: "2026-07-31", price: 1.6, value: 160 },
+    { date: "2026-08-03", price: 1.7, value: 170 },
+  ];
+  const value = buildHoldingChartData(points, "value");
+  assert.deepEqual(value.map((d) => d.value), [150, 160, 170]);
+  assert.deepEqual(value.map((d) => d.label), ["Jul 26", "", "Aug 26"]);
+  assert.deepEqual(buildHoldingChartData(points, "price").map((d) => d.value), [1.5, 1.6, 1.7]);
+  assert.deepEqual(buildHoldingChartData([], "price"), []);
+});
+
+test("holding chart data falls back to year labels for multi-year spans", () => {
+  const points = [
+    { date: "2022-01-03", price: 1, value: 1 },
+    { date: "2022-06-06", price: 1, value: 1 },
+    { date: "2023-01-02", price: 1, value: 1 },
+    { date: "2025-03-03", price: 1, value: 1 },
+  ];
+  assert.deepEqual(buildHoldingChartData(points, "value").map((d) => d.label), ["2022", "", "2023", "2025"]);
+});
+
+test("holding chart data thins boundary labels to at most maxLabels", () => {
+  const points = Array.from({ length: 13 }, (_, i) => {
+    const m = String(i + 1).padStart(2, "0");
+    return { date: `2026-${m > 12 ? 12 : m}-01`, price: 1, value: 1 };
+  }).map((p, i) => (i === 12 ? { ...p, date: "2027-01-01" } : p));
+  const labels = buildHoldingChartData(points, "value", { maxLabels: 6 }).map((d) => d.label);
+  assert.equal(labels.filter(Boolean).length, 5);
+  assert.equal(labels[0], "Jan 26");
+  assert.equal(buildHoldingChartData(points, "value").filter((d) => d.label).length, 13);
+});
+
+test("holding chart data drops the leading label when the next boundary is only a few points away", () => {
+  const points = [
+    { date: "2026-05-28", price: 1, value: 1 },
+    { date: "2026-05-29", price: 1, value: 1 },
+    ...Array.from({ length: 40 }, (_, i) => ({ date: `2026-06-${String(i + 1).padStart(2, "0")}`, price: 1, value: 1 })),
+  ];
+  const labels = buildHoldingChartData(points, "value").map((d) => d.label);
+  assert.equal(labels[0], "");
+  assert.equal(labels[2], "Jun 26");
+});

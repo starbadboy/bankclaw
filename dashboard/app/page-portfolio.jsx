@@ -16,6 +16,10 @@ const PF_DEBT_KINDS = {
   loan:     { name: "Loan" },
 };
 
+const HOLDING_RANGES = ["1M", "3M", "1Y", "All"];
+const holdingValue = (v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-SG") : v.toFixed(2));
+const holdingTick = (v) => (Math.abs(v) < 1e-9 ? "0.00" : Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(2));
+
 function portfolioTodayIso() {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -42,7 +46,12 @@ function MiniSpark({ data, w = 84, h = 28 }) {
 }
 
 /* ============ Net worth area chart (large) ============ */
-function NetWorthChart({ data, height = 220, privacy = false }) {
+function NetWorthChart({
+  data, height = 220, privacy = false,
+  fmtTick = (v) => `${Math.round(v / 1000)}k`,
+  fmtValue = (v) => Math.round(v).toLocaleString("en-SG"),
+  padFraction = null, // null keeps the net-worth look (pad by the full range); e.g. 0.08 hugs the line
+}) {
   const wrapRef = React.useRef(null);
   const [w, setW] = useStatePF(700);
   useEffectPF(() => {
@@ -61,7 +70,9 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
   const padX = 24, padY = 28;
   const rawMax = Math.max(...data.map((d) => d.value));
   const rawMin = Math.min(...data.map((d) => d.value));
-  const padding = Math.max(1, rawMax - rawMin, Math.abs(rawMax) * 0.08, Math.abs(rawMin) * 0.08);
+  const padding = padFraction == null
+    ? Math.max(1, rawMax - rawMin, Math.abs(rawMax) * 0.08, Math.abs(rawMin) * 0.08)
+    : Math.max(Math.abs(rawMax) * 1e-6, (rawMax - rawMin) * padFraction, Number.EPSILON); // flat series must not divide by 0
   const max = rawMax + padding;
   const min = rawMin - padding;
   const xAt = (i) => data.length === 1
@@ -91,12 +102,12 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
               <line x1={padX} x2={w - padX} y1={y} y2={y} stroke="var(--rule)" strokeDasharray="2 5" />
               <text x={w - padX + 6} y={y + 3} fontSize="9.5" fill="var(--ink-4)"
                 fontFamily="JetBrains Mono, monospace" letterSpacing="0.06em">
-                {Math.round(v / 1000)}k
+                {fmtTick(v)}
               </text>
             </g>
           );
         })}
-        {data.map((d, i) => (
+        {data.map((d, i) => d.label && (
           <text key={i} x={xAt(i)} y={height - 6} textAnchor="middle"
             fontSize="9.5" fill={i === data.length - 1 ? "var(--accent)" : "var(--ink-4)"}
             fontFamily="JetBrains Mono, monospace" letterSpacing="0.1em">
@@ -112,7 +123,7 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
         <g transform={`translate(${xAt(data.length - 1)}, ${yAt(data[data.length - 1].value) - 14})`}>
           <text textAnchor="middle" fontSize="11"
             fill="var(--accent)" fontFamily="Bodoni Moda, serif" fontWeight="500">
-            S$ {Math.round(data[data.length - 1].value).toLocaleString("en-SG")}
+            S$ {fmtValue(data[data.length - 1].value)}
           </text>
         </g>
       </svg>
@@ -425,7 +436,92 @@ function AssetTypeManager({ assetTypes, assets, busyId, onCreate, onUpdate, onDe
   );
 }
 
-function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClose }) {
+/* ============ Holding market data: ticker/units + fetched Price | Value chart ============ */
+function HoldingMarketPanel({ item, busy, onUpdateMarket }) {
+  const [ticker, setTicker] = useStatePF(item.ticker || "");
+  const [units, setUnits] = useStatePF(item.units == null ? "" : String(item.units));
+  const [marketError, setMarketError] = useStatePF("");
+  const [chartMode, setChartMode] = useStatePF("value");
+  const [chartRange, setChartRange] = useStatePF("1Y");
+  const [market, setMarket] = useStatePF({ loading: false, error: "", data: null });
+  const priced = Boolean(item.ticker) && item.units != null;
+
+  useEffectPF(() => {
+    if (!priced) { setMarket({ loading: false, error: "", data: null }); return undefined; }
+    let cancelled = false;
+    setMarket((cur) => ({ ...cur, loading: true, error: "" }));
+    apiFetchAssetMarketHistory(item.id, chartRange)
+      .then((data) => { if (!cancelled) setMarket({ loading: false, error: "", data }); })
+      .catch((e) => { if (!cancelled) setMarket({ loading: false, error: e.message || "Market data unavailable", data: null }); });
+    return () => { cancelled = true; };
+  }, [priced, item.id, item.ticker, item.units, chartRange]);
+
+  const submitMarket = async (event) => {
+    event.preventDefault();
+    const raw = units.trim();
+    const parsedUnits = raw === "" ? null : parseFloat(raw.replace(/[, ]/g, ""));
+    if (parsedUnits != null && !isFinite(parsedUnits)) { setMarketError("Units must be a number"); return; }
+    if (parsedUnits != null && parsedUnits < 0) { setMarketError("Units must be zero or more"); return; }
+    setMarketError("");
+    try { await onUpdateMarket({ ticker: ticker.trim().toUpperCase() || null, units: parsedUnits }); }
+    catch (e) { setMarketError(e.message || "Failed to save market data"); }
+  };
+
+  const points = market.data?.points || [];
+  return (
+    <>
+      <form className="pf-valuation-form" onSubmit={submitMarket}>
+        <div className="pf-valuation-list-head" style={{ gridColumn: "1 / -1", padding: "0 0 2px" }}>
+          <span>Market data</span>
+          <span>{priced ? `${item.ticker} · ${item.units} units` : "optional"}</span>
+        </div>
+        <label>
+          <span>Ticker</span>
+          <input value={ticker} onChange={(event) => setTicker(event.target.value)} placeholder="e.g. ADSK, D05.SI" />
+        </label>
+        <label>
+          <span>Units</span>
+          <input value={units} onChange={(event) => setUnits(event.target.value)} inputMode="decimal" placeholder="e.g. 672" />
+        </label>
+        <button className="btn" type="submit" disabled={busy}>
+          <Icon name="check" size={12} stroke={2} /> Save market data
+        </button>
+        {marketError && <div className="pf-custom-type-error" style={{ gridColumn: "1 / -1" }}>{marketError}</div>}
+      </form>
+
+      {priced && (
+        <div>
+          <div className="pf-valuation-list-head">
+            <span>{market.data?.ticker || item.ticker} · {market.data ? `${market.data.currency}${market.data.currency !== "SGD" ? " → S$" : ""}` : "market"}</span>
+            <div className="tools" style={{ display: "flex", gap: 8 }}>
+              <div className="seg">
+                {[["value", "Value"], ["price", "Price"]].map(([m, label]) => (
+                  <button key={m} type="button" className={chartMode === m ? "on" : ""} onClick={() => setChartMode(m)}>{label}</button>
+                ))}
+              </div>
+              <div className="seg">
+                {HOLDING_RANGES.map((r) => (
+                  <button key={r} type="button" className={chartRange === r ? "on" : ""} onClick={() => setChartRange(r)}>{r}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {market.loading && !market.data && <div className="hint" style={{ padding: "12px 0" }}>Loading prices…</div>}
+          {market.error && <div className="pf-custom-type-error">{market.error}</div>}
+          {market.data && !market.error && points.length === 0 && (
+            <div className="hint" style={{ padding: "12px 0" }}>No prices returned for {item.ticker} in this range.</div>
+          )}
+          {market.data && !market.error && points.length > 0 && (
+            <NetWorthChart data={buildHoldingChartData(points, chartMode, { maxLabels: 6 })} height={170}
+              fmtTick={holdingTick} fmtValue={holdingValue} padFraction={0.08} />
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClose, onUpdateMarket }) {
   const [asOfDate, setAsOfDate] = useStatePF(portfolioTodayIso());
   const [value, setValue] = useStatePF(String(item.value ?? ""));
   const orderedHistory = [...(history || [])].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date));
@@ -460,6 +556,8 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
             <Icon name="close" size={16} stroke={1.8} />
           </button>
         </div>
+
+        {itemType === "asset" && <HoldingMarketPanel key={item.id} item={item} busy={busy} onUpdateMarket={onUpdateMarket} />}
 
         <form className="pf-valuation-form" onSubmit={submit}>
           <label>
@@ -698,6 +796,16 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       if (activeValuation?.itemType === "debt" && activeValuation.itemId === id) setActiveValuation(null);
     } catch (e) { setErr(e.message || "Failed to delete debt"); }
     finally { setBusyId(null); }
+  };
+
+  const handleUpdateAssetMarket = async (payload) => {
+    if (!activeValuation || activeValuation.itemType !== "asset") return;
+    const id = activeValuation.itemId;
+    setBusyId(`valuation:asset:${id}`);
+    try {
+      const updated = await apiUpdatePortfolioAsset(id, payload);
+      setAssets((cur) => cur.map((a) => (a.id === id ? { ...a, ...updated } : a)));
+    } finally { setBusyId(null); }
   };
 
   const handleRecordValuation = async (payload) => {
@@ -1200,6 +1308,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
           busy={busyId === `valuation:${activeValuation.itemType}:${activeValuation.itemId}`}
           onSave={handleRecordValuation}
           onDelete={handleDeleteValuation}
+          onUpdateMarket={handleUpdateAssetMarket}
           onClose={() => setActiveValuation(null)}
         />
       )}

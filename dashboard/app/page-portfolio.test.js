@@ -83,3 +83,46 @@ test("performance tab renders windowed changes from the data helper", () => {
   assert.match(source, /PERF_WINDOWS/);
   assert.match(source, /row\.series/);
 });
+
+test("valuation panel lets the user set ticker and units through the asset PATCH api", () => {
+  assert.match(source, /Market data/);
+  assert.match(source, /Ticker/);
+  assert.match(source, /Units/);
+  assert.match(source, /handleUpdateAssetMarket/);
+  assert.match(source, /apiUpdatePortfolioAsset\(/);
+  assert.match(source, /onUpdateMarket/);
+});
+
+test("NetWorthChart skips empty x-labels and accepts a tick formatter", () => {
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /fmtTick/);
+  assert.match(chart, /d\.label &&|d\.label \?|filter\(\(d\) => d\.label\)/);
+  assert.doesNotMatch(chart, /\{Math\.round\(v \/ 1000\)\}k\s*<\/text>/);
+});
+
+test("valuation panel fetches market history and renders a Price/Value chart with a range pill", () => {
+  assert.match(source, /apiFetchAssetMarketHistory\(/);
+  assert.match(source, /buildHoldingChartData\(/);
+  assert.match(source, /HOLDING_RANGES/);
+  assert.match(source, /Loading prices/);
+  assert.match(source, /"price"/);
+  assert.match(source, /"value"/);
+  assert.match(source, /<NetWorthChart[^>]*fmtTick/);
+});
+
+test("NetWorthChart exposes padFraction and fmtValue with behaviour-preserving defaults", () => {
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /padFraction/);
+  assert.match(chart, /fmtValue = \(v\) => Math\.round\(v\)\.toLocaleString\("en-SG"\)/);
+  assert.match(source, /<NetWorthChart[^>]*padFraction=\{0\.08\}/);
+});
+
+test("holding market block is its own component with a padding floor and an empty-series hint", () => {
+  assert.match(source, /function HoldingMarketPanel/);
+  assert.match(source, /<HoldingMarketPanel key=\{item\.id\}/);
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /Number\.EPSILON/);
+  assert.match(source, /No prices returned/);
+  assert.match(source, /Units must be a number/);
+  assert.doesNotMatch(source, /pf-market-(form|chart)/);
+});

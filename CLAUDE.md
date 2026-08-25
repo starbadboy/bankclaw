@@ -39,8 +39,10 @@ cd tauri && npm install && npm run tauri build
 # Build installable binary (PyInstaller)
 pyinstaller entrypoint.spec
 
-# Docker
+# Docker (app + MongoDB)
 docker compose up
+# Local MongoDB only (for running the app against a local DB; tests mock the DB)
+docker compose up -d mongo
 ```
 
 System dependencies required: `poppler`, `ocrmypdf` (via `brew install poppler ocrmypdf` or `apt-get`).
@@ -151,3 +153,5 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 - Don't judge test results through grep pipelines (`grep -c`, `grep -qv` chains misread counts and inverted matches); use the test runner's exit code or read its summary lines directly. (2026-08-24)
 - JS date math has bitten twice (month-end rollover in `new Date(y, m-N, d)`; UTC-midnight shift when round-tripping "YYYY-MM-DD" through `new Date()` + `getDate()`). Rules: bucket by parsing the ISO string directly, clamp day arithmetic at month boundaries, and run date-heavy suites under `TZ=America/New_York` as well as local. (2026-08-25)
 - `uv run pytest .` exceeds 2 minutes (tests/e2e is slow/network-bound); for the fast loop run `uv run pytest tests/integration tests/unit tests/test_*.py`. Suite is also ordering-sensitive: `tests/test_portfolio_api.py` stubs `sys.modules["pandas"/"streamlit"]` at module level and poisons later imports when collected first. (2026-08-24)
+- Blocking I/O (HTTP clients, PDF parsing, market feeds) inside an `async def` FastAPI route stalls the single uvicorn worker for everyone; wrap it in `await asyncio.to_thread(...)` the way the import route already does. Caught by review on the market-history route after the pattern already existed in `api.py`. (2026-08-25)
+- Never `importlib.reload()` a module inside a `patch()` of one of its names: the reload re-binds the real object behind the patch. `tests/test_db.py` did this with `webapp.db.MongoClient`, created a real `localhost:27017` client and left it in the `_client` singleton — 17 unrelated tests then each burned a 30 s `ServerSelectionTimeoutError` (looked like "the suite needs Mongo"; it didn't). Reset singletons with `monkeypatch.setattr(module, "_client", None)` instead. (2026-08-25)

@@ -2,7 +2,7 @@
 
 Four collections, all scoped to ``user_email``:
 
-* ``portfolio_assets`` — name, kind, sub, value, base, ticker
+* ``portfolio_assets`` — name, kind, sub, value, base, ticker, units
 * ``portfolio_asset_types`` — user-defined asset class names and colors
 * ``portfolio_debts``  — name, kind, sub, value, base, apr, monthly
 * ``portfolio_valuations`` — dated values for each asset or debt
@@ -15,6 +15,7 @@ of deriving synthetic data from the ``base → value`` pair.
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import date, datetime, timezone
 
@@ -23,6 +24,7 @@ from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
 
 from webapp.db import get_db
+from webapp.market_data import TICKER_PATTERN
 
 _ASSETS_COLLECTION = "portfolio_assets"
 _ASSET_TYPES_COLLECTION = "portfolio_asset_types"
@@ -155,6 +157,27 @@ def _validate_asset_kind(user_email: str, kind: str) -> str:
     if not custom_type:
         raise ValueError(f"Unknown asset kind '{kind}'")
     return kind
+
+
+def _clean_ticker(raw: object) -> str | None:
+    ticker = (_clean_str(raw, field="ticker", max_len=32, required=False) or "").upper()
+    if not ticker:
+        return None
+    if not TICKER_PATTERN.match(ticker):
+        raise ValueError("ticker may only contain letters, digits, . ^ = - (max 16)")
+    return ticker
+
+
+def _coerce_units(raw: object) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        units = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("units must be a number") from exc
+    if not math.isfinite(units) or units < 0:
+        raise ValueError("units must be zero or greater")
+    return round(units, 6)  # fractional shares / coins
 
 
 def _normalize_item_type(item_type: str) -> str:
@@ -500,7 +523,8 @@ def create_asset(user_email: str, payload: dict) -> dict:
     as_of_date = _normalize_as_of_date(payload.get("as_of_date") or _today_iso())
     base = _coerce_value(payload.get("base", value), field="base")
     sub = _clean_str(payload.get("sub"), field="sub", required=False) or "Manual entry"
-    ticker = _clean_str(payload.get("ticker"), field="ticker", max_len=16, required=False) or None
+    ticker = _clean_ticker(payload.get("ticker"))
+    units = _coerce_units(payload.get("units"))
 
     doc = {
         "user_email": user_email,
@@ -510,6 +534,7 @@ def create_asset(user_email: str, payload: dict) -> dict:
         "value": value,
         "base": base,
         "ticker": ticker,
+        "units": units,
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
     }
@@ -542,7 +567,9 @@ def update_asset(user_email: str, asset_id: str, payload: dict) -> dict:
     if "base" in payload:
         set_doc["base"] = _coerce_value(payload["base"], field="base")
     if "ticker" in payload:
-        set_doc["ticker"] = _clean_str(payload["ticker"], field="ticker", max_len=16, required=False) or None
+        set_doc["ticker"] = _clean_ticker(payload["ticker"])
+    if "units" in payload:
+        set_doc["units"] = _coerce_units(payload["units"])
     if not set_doc:
         raise ValueError("Nothing to update")
     set_doc["updated_at"] = _now_iso()

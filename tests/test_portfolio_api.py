@@ -15,6 +15,7 @@ from webapp.api import (
     add_portfolio_valuation,
     edit_portfolio_asset_type,
     edit_portfolio_goal,
+    get_asset_market_history,
     get_portfolio_asset_types,
     get_portfolio_goals,
     get_portfolio_valuations,
@@ -22,6 +23,7 @@ from webapp.api import (
     remove_portfolio_goal,
     remove_portfolio_valuation,
 )
+from webapp.market_data import MarketDataError
 
 
 class _JsonRequest:
@@ -182,3 +184,101 @@ def test_goal_api_returns_repository_errors_as_bad_requests():
     assert create_err.value.detail == "target_amount must be greater than zero"
     assert update_err.value.status_code == 400
     assert delete_err.value.status_code == 400
+
+
+def _portfolio_with(asset):
+    return {"assets": [asset], "debts": []}
+
+
+def test_market_history_requires_ticker_and_units_on_the_asset():
+    bare = {"id": "a1", "name": "Cash", "ticker": None, "units": None}
+    with patch("webapp.api.list_portfolio", return_value=_portfolio_with(bare)):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert exc.value.status_code == 400
+
+
+def test_market_history_returns_series_for_priced_asset():
+    asset = {"id": "a1", "name": "ADSK", "ticker": "ADSK", "units": 672.0}
+    series = {
+        "ticker": "ADSK",
+        "currency": "USD",
+        "units": 672.0,
+        "points": [{"date": "2026-08-01", "price": 1.0, "value": 672.0}],
+    }
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", return_value=series) as mock_history,
+    ):
+        result = asyncio.run(get_asset_market_history("a1", range="3M", user="owner@example.com"))
+
+    assert result == series
+    mock_history.assert_called_once_with("ADSK", 672.0, "3M")
+
+
+def test_market_history_maps_feed_failures_to_502_and_bad_range_to_400():
+    asset = {"id": "a1", "name": "ADSK", "ticker": "NOPE", "units": 1.0}
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=MarketDataError("No price data for NOPE")),
+    ):
+        with pytest.raises(HTTPException) as feed_exc:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert feed_exc.value.status_code == 502
+
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=ValueError("pandas: unsupported period")) as feed,
+    ):
+        with pytest.raises(HTTPException) as value_exc:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+        with pytest.raises(HTTPException) as range_exc:
+            asyncio.run(get_asset_market_history("a1", range="5Y", user="owner@example.com"))
+    assert value_exc.value.status_code == 502  # library ValueErrors are feed failures, not client errors
+    assert range_exc.value.status_code == 400
+    assert feed.call_count == 1  # bad range is rejected before the feed is called
+
+
+def test_market_history_unknown_asset_is_400():
+    with patch("webapp.api.list_portfolio", return_value={"assets": [], "debts": []}):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(get_asset_market_history("missing", range="1Y", user="owner@example.com"))
+    assert exc.value.status_code == 400
+
+
+def test_market_history_hides_internal_errors_but_keeps_feed_messages():
+    asset = {"id": "a1", "name": "ADSK", "ticker": "ADSK", "units": 1.0}
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=KeyError("Close")),
+    ):
+        with pytest.raises(HTTPException) as internal:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert internal.value.status_code == 502
+    assert "Close" not in internal.value.detail
+
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=ValueError("could not convert string to float: 'n/a'")),
+    ):
+        with pytest.raises(HTTPException) as library:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert library.value.detail == "Market data unavailable"  # library ValueErrors are internal too
+
+    legacy_bad = {"id": "a1", "name": "X", "ticker": "../../v1/test", "units": 1.0}
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(legacy_bad)),
+        patch("webapp.api.get_market_history") as never,
+    ):
+        with pytest.raises(HTTPException) as unsafe:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+        never.assert_not_called()
+    assert unsafe.value.status_code == 400
+
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=MarketDataError("No price data for ADSK")),
+    ):
+        with pytest.raises(HTTPException) as feed:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert feed.value.detail == "Market data unavailable: No price data for ADSK"

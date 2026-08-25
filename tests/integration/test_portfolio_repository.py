@@ -15,6 +15,7 @@ from webapp.portfolio_repository import (
     list_goals,
     list_valuations,
     record_valuation,
+    update_asset,
     update_asset_type,
     update_goal,
 )
@@ -362,3 +363,58 @@ def test_goal_update_and_delete_missing_goal_raise():
             update_goal("owner@example.com", str(ObjectId()), {"name": "X"})
         with pytest.raises(ValueError, match="Goal not found"):
             delete_goal("owner@example.com", str(ObjectId()))
+
+
+def test_create_asset_stores_units_as_number_and_defaults_to_none():
+    db, collections = _portfolio_db()
+    collections["portfolio_assets"].insert_one.return_value.inserted_id = ObjectId()
+
+    with (
+        patch("webapp.portfolio_repository.get_db", return_value=db),
+        patch("webapp.portfolio_repository.record_valuation"),
+    ):
+        with_units = create_asset("owner@example.com", {"name": "ADSK", "kind": "equities", "value": 1, "units": "672"})
+        without_units = create_asset("owner@example.com", {"name": "Cash", "kind": "cash", "value": 1})
+        fractional = create_asset("owner@example.com", {"name": "BTC", "kind": "crypto", "value": 1, "units": 0.001234})
+
+    assert with_units["units"] == 672.0
+    assert fractional["units"] == 0.001234
+    assert without_units["units"] is None
+
+
+def test_update_asset_sets_units_and_rejects_bad_values():
+    db, collections = _portfolio_db()
+    asset_id = ObjectId()
+    collections["portfolio_assets"].find_one_and_update.return_value = {
+        "_id": asset_id,
+        "user_email": "owner@example.com",
+        "name": "ADSK",
+        "ticker": "ADSK",
+        "units": 672.0,
+    }
+
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        updated = update_asset("owner@example.com", str(asset_id), {"ticker": "ADSK", "units": 672})
+        for bad in ("abc", -1):
+            with pytest.raises(ValueError):
+                update_asset("owner@example.com", str(asset_id), {"units": bad})
+
+    assert updated["units"] == 672.0
+    set_doc = collections["portfolio_assets"].find_one_and_update.call_args.args[1]["$set"]
+    assert set_doc["units"] == 672.0
+    assert set_doc["ticker"] == "ADSK"
+
+
+def test_update_asset_uppercases_ticker_and_rejects_unsafe_symbols():
+    db, collections = _portfolio_db()
+    asset_id = ObjectId()
+    collections["portfolio_assets"].find_one_and_update.return_value = {"_id": asset_id, "ticker": "D05.SI"}
+
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        update_asset("owner@example.com", str(asset_id), {"ticker": "d05.si"})
+        for bad in ("../../v1/test", "AD SK", "A?B", "x" * 17):
+            with pytest.raises(ValueError):
+                update_asset("owner@example.com", str(asset_id), {"ticker": bad})
+
+    set_doc = collections["portfolio_assets"].find_one_and_update.call_args.args[1]["$set"]
+    assert set_doc["ticker"] == "D05.SI"

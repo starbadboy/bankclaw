@@ -4,3 +4,26 @@ services:
     container_name: statementsensei
     ports:
       - "8501:8501"
+    environment:
+      # Compose-local Mongo; a MONGODB_URL in .env is still used when running outside compose.
+      MONGODB_URL: mongodb://mongo:27017
+      MONGODB_DB_NAME: ${MONGODB_DB_NAME:-bankclaw}
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  mongo:
+    image: mongo:7.0
+    container_name: statementsensei-mongo
+    ports:
+      - "27017:27017"   # also serves the local test suite (tests connect to localhost:27017)
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  mongo_data:
