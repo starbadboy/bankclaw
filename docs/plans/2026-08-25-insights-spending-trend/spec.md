@@ -47,6 +47,7 @@ Confirmed at the gate: (1) one pure data-module function carrying all math — w
 - The trend is a second view of the existing Cash flow panel, switched by a pill toggle in the panel header; no new panel.
 - All computation is client-side from already-loaded transactions; no API or storage changes.
 - The trend follows the range selector (user decision, against recommendation, recorded in intent); it includes the current partial month — a deliberate, view-local exception to the other trend panels' exclusion convention.
+- Window per range, explicit: 1m → 2 lines, 3m → 3, 6m → 6, All time → capped at 12 for readability; an unknown future range id falls back to 6. *(Amended post-gate during review triage — the "All time" case was undefined at spec time; this amendment is the rework signal working as designed.)*
 - Curve math lives in one pure function in the data module; the view only renders its output.
 - Rendering reuses the existing multi-line SVG chart idiom (hover index, tooltip, series colors), not a new chart library.
 - Days axis runs 1..31; shorter months simply end early — no normalization, honest lengths (matches AC10's fairness by *visibility*, not by rescaling).

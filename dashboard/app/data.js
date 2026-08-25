@@ -281,12 +281,14 @@ function computeSpendingTrend(transactions, options = {}) {
   (transactions || []).forEach((t) => {
     if (t.amount >= 0) return;                 // money-out only
     if (excluded.has(t.category)) return;
-    const d = new Date(t.date);
-    const m = byKey.get(`${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`);
+    // Parse the ISO string directly — new Date("YYYY-MM-DD") is UTC midnight and
+    // shifts a day west of UTC, migrating 1st-of-month spend into the prior month.
+    const [ty, tm, td] = String(t.date).slice(0, 10).split("-").map(Number);
+    if (!ty || !tm || !td) return;
+    const m = byKey.get(`${ty}-${String(tm - 1).padStart(2, "0")}`);
     if (!m) return;
-    const day = d.getDate();
-    if (day > m.cumulative.length) return;     // future-dated inside current month
-    m.cumulative[day - 1] += -t.amount;
+    if (td > m.cumulative.length) return;      // future-dated inside current month
+    m.cumulative[td - 1] += -t.amount;
   });
 
   months.forEach((m) => {

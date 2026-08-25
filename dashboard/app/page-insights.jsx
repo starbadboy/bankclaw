@@ -57,19 +57,19 @@ function SpendingTrendChart({ trend, height = 220, privacy = false }) {
   const xAt = (day) => padL + ((day - 1) / 30) * innerW;   // fixed 1..31 domain — shorter months end early
   const yAt = (v) => padTop + (1 - v / maxVal) * innerH;
   const ticks = [0, 0.5, 1].map((f) => f * maxVal);
-  const fmtTick = (v) => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : Math.round(v).toString();
+  const fmtTick = _inFmtTick;
 
   const handleMove = (e) => {
-    const rect = wrapRef.current.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const day = Math.max(1, Math.min(31, Math.round(((x - padL) / Math.max(1, innerW)) * 30) + 1));
     setHoverDay(day);
   };
 
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}
-      onMouseMove={handleMove} onMouseLeave={() => setHoverDay(null)}>
-      <svg width="100%" height={height} style={{ display: "block", filter: privacy ? "blur(6px)" : "none" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <svg width="100%" height={height} style={{ display: "block", filter: privacy ? "blur(6px)" : "none" }}
+        onMouseMove={handleMove} onMouseLeave={() => setHoverDay(null)}>
         {ticks.map((v, i) => (
           <g key={i}>
             <line x1={padL} x2={w - padR} y1={yAt(v)} y2={yAt(v)} stroke="var(--rule)" strokeWidth="1" />
@@ -119,8 +119,8 @@ function SpendingTrendChart({ trend, height = 220, privacy = false }) {
         </div>
       )}
       <div className="legend" style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11 }}>
-        {trend.map((m) => {
-          const age = trend.length - 1 - trend.indexOf(m);
+        {trend.map((m, mi) => {
+          const age = trend.length - 1 - mi;
           return (
             <span key={m.key} style={{ opacity: m.isCurrent ? 1 : Math.max(0.4, 0.8 - age * 0.1) }}>
               <span className="sw" style={{ background: m.isCurrent ? "var(--debit)" : "var(--ink-3)" }}></span>
@@ -152,7 +152,7 @@ function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
   const xAt = (i) => padL + (months.length <= 1 ? innerW / 2 : (i * innerW) / (months.length - 1));
   const yAt = (v) => padTop + (1 - v / maxVal) * innerH;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * maxVal);
-  const fmtTick = (t) => t >= 1000 ? `${(t / 1000).toFixed(t >= 10000 ? 0 : 1)}k` : Math.round(t).toString();
+  const fmtTick = _inFmtTick;
   const selectedTotal = series.reduce((total, s) => total + (s.values[hoverIdx] || 0), 0);
 
   const handleMove = (e) => {
@@ -269,6 +269,11 @@ function detectRecurring(transactions) {
   return results.sort((a, b) => b.amt - a.amt);
 }
 
+function _inFmtTick(v) { return v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : Math.round(v).toString(); }
+
+// Trend window per range id: lines rendered = current month-to-date + previous.
+const TREND_MONTHS = { "1m": 2, "3m": 3, "6m": 6, "all": 12 };
+
 const _IN_RANGES = [
   { id: "1m",  label: "Last month" },
   { id: "3m",  label: "Last 3 months" },
@@ -311,15 +316,6 @@ function InsightsPage({ transactions, privacy }) {
   // Monthly bars — driven by filtered range, respecting category exclusions.
   // Exclusions only affect spend rows; income rows are always positive amounts
   // and never appear in `excludedCats` (which only holds spend-side category ids).
-  const [trendView, setTrendView] = useStateIN("cashflow");
-  const trend = useMemoIN(
-    () => computeSpendingTrend(transactions, {
-      rangeMonths: range === "all" ? 12 : parseInt(range, 10),
-      excludedCategories: excludedCats,
-    }),
-    [transactions, range, excludedCats],
-  );
-
   const months = useMemoIN(() => {
     const bucketMap = new Map();
     filtered.forEach((t) => {
@@ -336,6 +332,18 @@ function InsightsPage({ transactions, privacy }) {
       .map(([, v]) => v)
       .slice(-12);
   }, [filtered, excludedCats]);
+
+  // ── Spending trend (cumulative per-month lines, toggled in Cash flow panel) ──
+  // Explicit window per range id — never parse the id; "all" is capped so the
+  // overlay stays readable. A new range id falls back to 6, visibly, not to NaN.
+  const [trendView, setTrendView] = useStateIN("cashflow");
+  const trend = useMemoIN(
+    () => computeSpendingTrend(transactions, {
+      rangeMonths: TREND_MONTHS[range] ?? 6,
+      excludedCategories: excludedCats,
+    }),
+    [transactions, range, excludedCats],
+  );
 
   // ── Category trend (multi-line by month) ────────────────────────────────
   // Trend windows end at LAST month — current month is excluded since data is
@@ -504,8 +512,8 @@ function InsightsPage({ transactions, privacy }) {
                 </span>
               )}
               <div className="seg">
-                <button className={trendView === "cashflow" ? "on" : ""} onClick={() => setTrendView("cashflow")}>Cash flow</button>
-                <button className={trendView === "trend" ? "on" : ""} onClick={() => setTrendView("trend")}>Spending trend</button>
+                <button className={trendView === "cashflow" ? "on" : ""} aria-pressed={trendView === "cashflow"} onClick={() => setTrendView("cashflow")}>Cash flow</button>
+                <button className={trendView === "trend" ? "on" : ""} aria-pressed={trendView === "trend"} onClick={() => setTrendView("trend")}>Spending trend</button>
               </div>
               {trendView === "cashflow" && (<>
               <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>

@@ -247,6 +247,7 @@ test("spending trend accumulates money-out per day and respects exclusions", () 
   const [july, august] = trend;
   assert.equal(august.isCurrent, true);
   assert.equal(august.cumulative.length, 15);          // cut at now (Aug 15)
+  assert.equal(august.cumulative[3], 0);               // nothing before day 5 (day-exact, catches TZ shift)
   assert.equal(august.cumulative[4], 100);             // day 5: rent excluded
   assert.equal(august.cumulative[11], 125.5);          // day 12 cumulative
   assert.equal(august.cumulative[14], 125.5);          // income never counted
@@ -283,4 +284,13 @@ test("spending trend ignores transactions outside the window", () => {
   const trend = computeSpendingTrend(txns, { rangeMonths: 3, now: new Date(2025, 7, 15) });
   const total = trend.reduce((s, m) => s + m.cumulative[m.cumulative.length - 1], 0);
   assert.equal(total, 1);
+});
+
+
+test("spending trend keeps first-of-month spend in its own month regardless of timezone", () => {
+  const txns = [{ date: "2025-08-01", amount: -500, category: "food" }];
+  const trend = computeSpendingTrend(txns, { rangeMonths: 1, now: new Date(2025, 7, 15) });
+  const [july, august] = trend;
+  assert.equal(august.cumulative[0], 500);   // Aug 1 stays in August
+  assert.equal(july.cumulative[30], 0);      // never migrates into July
 });

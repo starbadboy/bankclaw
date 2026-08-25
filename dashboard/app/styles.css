@@ -441,6 +441,7 @@ body {
   inline-size: min(100%, 64ch);
   min-inline-size: 0;
   overflow: hidden;
+  text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

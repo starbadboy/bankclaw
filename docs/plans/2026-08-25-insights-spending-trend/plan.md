@@ -5,8 +5,8 @@
 
 **Goal:** Spending-trend view in the Cash flow panel — cumulative day-by-day spend line per month in the selected range.
 **Architecture:** One pure function in the data module computes per-month cumulative series from already-loaded transactions; the Insights page gains a pill toggle and a trend chart following the existing multi-line SVG idiom. No API/DB changes.
-**Complexity Path:** pending user choice
-**Status:** Draft
+**Complexity Path:** `Simplified TDD path` (user, 2026-08-25)
+**Status:** Complete
 
 ## Architecture Review
 - Reuse: `insightsFilter` (range window), `excludedCats` set + the exclusion rule from the months memo (`t.amount < 0 && excludedCats.has(t.category)`), `CategoryTrendChart`'s SVG/hover/tooltip idiom, `fmtSGD` + privacy, `seg` pill idiom.
@@ -42,7 +42,7 @@
 ### Task 2: Hover tooltip + end marker + polish
 **Files:** `dashboard/app/page-insights.jsx`, `dashboard/app/page-insights.test.js`
 **RED:** source assertions: hover state, per-month cumulative in tooltip, end marker on current month, privacy blur on tooltip values.
-**GREEN:** hover index per CategoryTrendChart idiom; tooltip lists each month's total at hovered day (skip months shorter than hovered day); circle marker at current line end; legend line.
+**GREEN:** hover index per CategoryTrendChart idiom; tooltip lists each month's total at hovered day (months shorter than the hovered day render — (keeps row alignment; plan updated to match shipped behavior)); circle marker at current line end; legend line.
 **Verify:** both test files; esbuild; screenshots (UI feedback loop) of trend view at 1m and 6m + hover.
 **COMMIT:** `feat(insights): spending trend tooltip and month-progress marker`
 
@@ -55,14 +55,20 @@ Test point 1 behavioral (data.test.js, boundary-heavy per the TDD boundary rule)
 - **Risk:** 6m = 6 overlaid lines gets visually noisy → Mitigation: fade older months progressively; screenshot round judges it.
 
 ## Success Criteria
-- [ ] AC1–AC6 met
-- [ ] All JS suites pass; esbuild clean; pytest untouched-backend proof
-- [ ] Screenshots of each changed view in Progress Log
-- [ ] Tri-axis review run, findings recorded
-- [ ] Evidence before Complete
+- [x] AC1–AC6 met (Spec axis: all MET with line evidence)
+- [x] All JS suites pass — including under TZ=America/New_York; esbuild clean; 68 non-e2e python tests (backend untouched)
+- [x] Screenshots in Progress Log (trend-6m, trend-1m, trend-hover)
+- [x] Tri-axis review run, all HIGH/MEDIUM + accepted nits fixed
+- [x] Evidence before Complete
 
 ## Progress Log
 | Date | Task | Status | Notes |
 |---|---|---|---|
 | 2026-08-25 | Folder authored | Done | Grilling (2 frontier rounds), test-point gate, spec confirmed |
 | 2026-08-25 | Interrogation pass: 2 findings fixed | Done | Window-count rule made explicit (max(2,N) incl. current); rangeMonths derivation stated |
+| 2026-08-25 | Branch + Task 1 (tracer) | Done | feat/insights-spending-trend; RED (ReferenceError + source assertions) → GREEN 18/18 data tests; commit 422b8bb |
+| 2026-08-25 | Task 2 (tooltip + marker) | Done | RED → GREEN; commit 5264a8f |
+| 2026-08-25 | UI feedback loop | Done | App served locally; login via the app's own demo-mode (`POST /api/auth/login`, no password) under throwaway `trend-demo@local.test` seeded with 87 synthetic txns. Screenshots: scratchpad/trend-6m.png (6 lines, zero-months flat = AC6), trend-1m.png (JUL dashed vs AUG-to-date solid + marker = AC2/AC3), trend-hover.png (tooltip "Total to day 22" = AC5) |
+| 2026-08-25 | Tri-axis review | Done | **Standards: Block** — HIGH: TZ bucketing (new Date("YYYY-MM-DD") is UTC midnight; west of UTC, 1st-of-month spend migrated to the prior month's line; suite passed 18/18 under TZ=America/New_York despite it — cumulative sums hide day shifts); 3 MEDIUM (day-exact test pins, parseInt range ids, hover zone over legend); 2 nits. **Spec: AC1–AC6 all MET**; 2 Important (all→12 undefined+untested; plan close-out pending); 1 nit. **Simplicity:** 1 Important (hover handler — converged with Standards), 5 nits; both duplication probes = justified copies; skipped-list clean |
+| 2026-08-25 | Review fixes | Done | ISO-string date parsing (TZ-safe, with comment); day-exact + first-of-month regression tests; suite now also run under TZ=America/New_York (passes); TREND_MONTHS explicit map replaces parseInt (+ source test + spec amendment for all→12); hover moved onto svg with e.currentTarget; fmtTick hoisted to _inFmtTick; indexOf→map index; dead test alternations dropped; aria-pressed on toggle; comment placement fixed |
+| 2026-08-25 | Deferred (named, not fixed) | — | Same TZ bucketing class exists in 3 pre-existing call sites (months memo, category trend ×2) — the Bars view shares the latent bug west of UTC; skipped: out of this feature's scope, fix as its own change with a shared date-key helper. Demo data cleanup: trend-demo@local.test rows removable on request |
