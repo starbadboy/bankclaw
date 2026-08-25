@@ -447,12 +447,6 @@ function HoldingMarketPanel({ item, busy, onUpdateMarket }) {
   const priced = Boolean(item.ticker) && item.units != null;
 
   useEffectPF(() => {
-    setTicker(item.ticker || "");
-    setUnits(item.units == null ? "" : String(item.units));
-    setMarketError("");
-  }, [item.id]);
-
-  useEffectPF(() => {
     if (!priced) { setMarket({ loading: false, error: "", data: null }); return undefined; }
     let cancelled = false;
     setMarket((cur) => ({ ...cur, loading: true, error: "" }));
@@ -563,7 +557,7 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
           </button>
         </div>
 
-        {itemType === "asset" && <HoldingMarketPanel item={item} busy={busy} onUpdateMarket={onUpdateMarket} />}
+        {itemType === "asset" && <HoldingMarketPanel key={item.id} item={item} busy={busy} onUpdateMarket={onUpdateMarket} />}
 
         <form className="pf-valuation-form" onSubmit={submit}>
           <label>

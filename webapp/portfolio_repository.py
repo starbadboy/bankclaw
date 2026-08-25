@@ -24,6 +24,7 @@ from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
 
 from webapp.db import get_db
+from webapp.market_data import TICKER_PATTERN
 
 _ASSETS_COLLECTION = "portfolio_assets"
 _ASSET_TYPES_COLLECTION = "portfolio_asset_types"
@@ -158,14 +159,11 @@ def _validate_asset_kind(user_email: str, kind: str) -> str:
     return kind
 
 
-_TICKER = re.compile(r"^[A-Z0-9.^=\-]{1,16}$")
-
-
 def _clean_ticker(raw: object) -> str | None:
     ticker = (_clean_str(raw, field="ticker", max_len=32, required=False) or "").upper()
     if not ticker:
         return None
-    if not _TICKER.match(ticker):
+    if not TICKER_PATTERN.match(ticker):
         raise ValueError("ticker may only contain letters, digits, . ^ = - (max 16)")
     return ticker
 

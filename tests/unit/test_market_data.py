@@ -107,3 +107,11 @@ def test_get_market_history_scales_minor_unit_currencies_and_pairs_the_major_uni
     assert result["currency"] == "GBP"
     assert result["points"] == [{"date": "2026-08-01", "price": 42.5, "value": 425.0}]
     assert [c.args[0] for c in mock_fetch.call_args_list] == ["SHEL.L", "GBPSGD=X"]
+
+
+def test_get_market_history_rejects_unsafe_tickers_before_touching_the_feed():
+    with patch("webapp.market_data.fetch_history") as fetch:
+        for bad in ("../../v1/test", "AD SK", "a?b"):
+            with pytest.raises(ValueError):
+                get_market_history(bad, 1, "1Y")
+    fetch.assert_not_called()

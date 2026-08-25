@@ -23,6 +23,7 @@ from webapp.api import (
     remove_portfolio_goal,
     remove_portfolio_valuation,
 )
+from webapp.market_data import MarketDataError
 
 
 class _JsonRequest:
@@ -219,7 +220,7 @@ def test_market_history_maps_feed_failures_to_502_and_bad_range_to_400():
     asset = {"id": "a1", "name": "ADSK", "ticker": "NOPE", "units": 1.0}
     with (
         patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
-        patch("webapp.api.get_market_history", side_effect=LookupError("No price data for NOPE")),
+        patch("webapp.api.get_market_history", side_effect=MarketDataError("No price data for NOPE")),
     ):
         with pytest.raises(HTTPException) as feed_exc:
             asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
@@ -243,3 +244,23 @@ def test_market_history_unknown_asset_is_400():
         with pytest.raises(HTTPException) as exc:
             asyncio.run(get_asset_market_history("missing", range="1Y", user="owner@example.com"))
     assert exc.value.status_code == 400
+
+
+def test_market_history_hides_internal_errors_but_keeps_feed_messages():
+    asset = {"id": "a1", "name": "ADSK", "ticker": "ADSK", "units": 1.0}
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=KeyError("Close")),
+    ):
+        with pytest.raises(HTTPException) as internal:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert internal.value.status_code == 502
+    assert "Close" not in internal.value.detail
+
+    with (
+        patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),
+        patch("webapp.api.get_market_history", side_effect=MarketDataError("No price data for ADSK")),
+    ):
+        with pytest.raises(HTTPException) as feed:
+            asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+    assert feed.value.detail == "Market data unavailable: No price data for ADSK"
