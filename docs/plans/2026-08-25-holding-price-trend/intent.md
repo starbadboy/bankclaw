@@ -1,0 +1,31 @@
+# Intent — Holding price & market-value trend
+
+## 0. Intent
+- **Problem:** A stock holding (e.g. ADSK, 672 units) shows only the values the user typed by hand. With one recorded valuation the row says "1 point" — there is no way to see how the share price has moved, or what the position has been worth over time, without re-entering numbers.
+- **Proposed outcome:** Opening a holding's calendar (valuation) panel shows a line chart with a **Value | Price** toggle and a **1M / 3M / 1Y / All** range pill. *Price* is the fetched daily close converted to S$; *Value* is `units × price` in S$. The user sets a Ticker and Units for the holding in that same panel. Holdings without both fields behave exactly as today.
+- **Affected systems:** `webapp/portfolio_repository.py` (asset `units` field), `webapp/api.py` (new read-only market-history endpoint), new market-data module (yfinance + in-process cache), `dashboard/app/page-portfolio.jsx` (ValuationPanel), `dashboard/app/api.js`, `dashboard/app/data.js` (series helper), `pyproject.toml` (yfinance dependency).
+- **Constraints:**
+  - Display-only: fetched prices never modify `asset.value`, `portfolio_valuations`, or net worth.
+  - No existing behaviour changes for assets without ticker+units; debts untouched.
+  - Displayed currency is S$ (app-wide); FX comes from the same feed (`{CUR}SGD=X`), no conversion when the ticker already trades in SGD.
+  - Desktop/offline build: the chart degrades to an inline "prices unavailable" message; nothing else on the page depends on the feed.
+  - Follows CLAUDE.md lessons: bucket dates by ISO string, run date suites under `TZ=America/New_York` too.
+- **Resolved decisions:**
+  - Price source → **yfinance** (new dependency, no API key)
+  - Total-amount trend → **units × fetched daily price** (not recorded valuations)
+  - Currency → **convert to S$ via fetched FX history**, labelled S$
+  - Write-back → **none; display only**
+  - Chart placement → **inside the valuation (calendar) panel**
+  - Chart form → **single line + Value | Price toggle pill** (reuse spending-trend pill pattern; reuse `NetWorthChart` for the line if its data shape fits)
+  - Ticker/Units entry → **"Market data" row in the valuation panel, for any asset**, saved through the existing PATCH asset API; chart gated on both being set
+  - Range → **pill 1M / 3M / 1Y / All**; "All" fetched at weekly interval to bound point count
+  - Caching → in-process dict with 1-hour TTL per (ticker, range) — `ponytail:` upgrade to Mongo cache if multi-worker
+  - Errors → unknown ticker / network failure shows an inline message in the panel; API returns 502 with detail
+- **Out of scope:**
+  - FX for anything other than the chart (rest of the page stays as-is)
+  - Auto-updating asset value / recording valuations from the feed
+  - Ticker/Units fields on the add-asset form
+  - Per-valuation units (buy/sell history); a single current `units` on the asset
+  - Debts, crypto-specific handling beyond what yfinance tickers already cover (e.g. `BTC-USD` just works)
+  - Changing the table's `First recorded` / `Trend · 12M` / `Δ` columns
+- **Open questions:** none deliberately deferred.
