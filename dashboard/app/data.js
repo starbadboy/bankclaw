@@ -144,6 +144,39 @@ function getPortfolioItemSeries(histories, itemType, itemId) {
   return _portfolioSortedValuations(entries).map((entry) => entry.value);
 }
 
+const _HOLDING_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Market-history points [{date, price, value}] → NetWorthChart data [{label, value}].
+// Labels only where the month (or, for spans > 36 months, the year) changes; dates are sliced as ISO strings.
+function buildHoldingChartData(points, mode, options = {}) {
+  if (!points || points.length === 0) return [];
+  const maxLabels = Number(options.maxLabels) || Infinity;
+  const key = mode === "price" ? "price" : "value";
+  const first = points[0].date, last = points[points.length - 1].date;
+  const spanMonths = (Number(last.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(last.slice(5, 7)) - Number(first.slice(5, 7));
+  const byYear = spanMonths > 36;
+  const bucket = (date) => (byYear ? date.slice(0, 4) : date.slice(0, 7));
+  const labelFor = (date) => (byYear ? date.slice(0, 4) : `${_HOLDING_MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(2, 4)}`);
+  let prev = null;
+  const labelled = points.map((p) => {
+    const b = bucket(p.date);
+    const label = b === prev ? "" : labelFor(p.date);
+    prev = b;
+    return { label, value: p[key] };
+  });
+  let boundaries = labelled.filter((d) => d.label).length;
+  // The first point always starts a bucket; drop its label when the next boundary is unusually close.
+  const secondBoundary = labelled.findIndex((d, i) => i > 0 && d.label);
+  if (secondBoundary > 0 && secondBoundary < (labelled.length / boundaries) * 0.4) {
+    labelled[0] = { ...labelled[0], label: "" };
+    boundaries -= 1;
+  }
+  if (boundaries <= maxLabels) return labelled;
+  const step = Math.ceil(boundaries / maxLabels);
+  let seen = 0;
+  return labelled.map((d) => (d.label && seen++ % step !== 0 ? { ...d, label: "" } : d));
+}
+
 function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
   const months = Math.max(1, Number(options.months) || 12);
   const now = options.now instanceof Date ? options.now : new Date();
@@ -327,6 +360,6 @@ function relDateGroup(iso) {
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend, buildHoldingChartData,
   fmtSGD, fmtDate, relDateGroup,
 });

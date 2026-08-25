@@ -447,6 +447,15 @@ async function apiFetchPortfolioValuations(itemType, id) {
   const data = await res.json();
   return data.valuations || [];
 }
+async function apiFetchAssetMarketHistory(id, range) {
+  const path = `/api/portfolio/assets/${encodeURIComponent(id)}/market-history?range=${encodeURIComponent(range)}`;
+  const res = await _fetch(path);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to load market data");
+  }
+  return res.json();
+}
 async function apiRecordPortfolioValuation(itemType, id, payload) {
   const path = `/api/portfolio/${encodeURIComponent(itemType)}/${encodeURIComponent(id)}/valuations`;
   const data = await _portfolioMutate(path, "POST", payload);
@@ -483,7 +492,7 @@ Object.assign(window, {
   apiUpdatePortfolioAssetType, apiDeletePortfolioAssetType,
   apiCreatePortfolioAsset, apiUpdatePortfolioAsset, apiDeletePortfolioAsset,
   apiCreatePortfolioDebt, apiUpdatePortfolioDebt, apiDeletePortfolioDebt,
-  apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation,
+  apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation, apiFetchAssetMarketHistory,
   apiFetchPortfolioGoals, apiCreatePortfolioGoal, apiUpdatePortfolioGoal, apiDeletePortfolioGoal,
   apiAiReview,
   apiExportCsv,

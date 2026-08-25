@@ -16,6 +16,10 @@ const PF_DEBT_KINDS = {
   loan:     { name: "Loan" },
 };
 
+const HOLDING_RANGES = ["1M", "3M", "1Y", "All"];
+const holdingValue = (v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-SG") : v.toFixed(2));
+const holdingTick = (v) => (Math.abs(v) >= 1000 ? `${Math.round(v / 1000)}k` : Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(2));
+
 function portfolioTodayIso() {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -42,7 +46,12 @@ function MiniSpark({ data, w = 84, h = 28 }) {
 }
 
 /* ============ Net worth area chart (large) ============ */
-function NetWorthChart({ data, height = 220, privacy = false, fmtTick = (v) => `${Math.round(v / 1000)}k` }) {
+function NetWorthChart({
+  data, height = 220, privacy = false,
+  fmtTick = (v) => `${Math.round(v / 1000)}k`,
+  fmtValue = (v) => Math.round(v).toLocaleString("en-SG"),
+  padFraction = null, // null keeps the net-worth look (pad by the full range); e.g. 0.08 hugs the line
+}) {
   const wrapRef = React.useRef(null);
   const [w, setW] = useStatePF(700);
   useEffectPF(() => {
@@ -61,7 +70,9 @@ function NetWorthChart({ data, height = 220, privacy = false, fmtTick = (v) => `
   const padX = 24, padY = 28;
   const rawMax = Math.max(...data.map((d) => d.value));
   const rawMin = Math.min(...data.map((d) => d.value));
-  const padding = Math.max(1, rawMax - rawMin, Math.abs(rawMax) * 0.08, Math.abs(rawMin) * 0.08);
+  const padding = padFraction == null
+    ? Math.max(1, rawMax - rawMin, Math.abs(rawMax) * 0.08, Math.abs(rawMin) * 0.08)
+    : Math.max(Math.abs(rawMax) * 1e-6, (rawMax - rawMin) * padFraction);
   const max = rawMax + padding;
   const min = rawMin - padding;
   const xAt = (i) => data.length === 1
@@ -112,7 +123,7 @@ function NetWorthChart({ data, height = 220, privacy = false, fmtTick = (v) => `
         <g transform={`translate(${xAt(data.length - 1)}, ${yAt(data[data.length - 1].value) - 14})`}>
           <text textAnchor="middle" fontSize="11"
             fill="var(--accent)" fontFamily="Bodoni Moda, serif" fontWeight="500">
-            S$ {Math.round(data[data.length - 1].value).toLocaleString("en-SG")}
+            S$ {fmtValue(data[data.length - 1].value)}
           </text>
         </g>
       </svg>
@@ -431,6 +442,20 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
   const [ticker, setTicker] = useStatePF(item.ticker || "");
   const [units, setUnits] = useStatePF(item.units == null ? "" : String(item.units));
   const [marketError, setMarketError] = useStatePF("");
+  const [chartMode, setChartMode] = useStatePF("value");
+  const [chartRange, setChartRange] = useStatePF("1Y");
+  const [market, setMarket] = useStatePF({ loading: false, error: "", data: null });
+  const priced = itemType === "asset" && Boolean(item.ticker) && item.units != null;
+
+  useEffectPF(() => {
+    if (!priced) { setMarket({ loading: false, error: "", data: null }); return undefined; }
+    let cancelled = false;
+    setMarket((cur) => ({ ...cur, loading: true, error: "" }));
+    apiFetchAssetMarketHistory(item.id, chartRange)
+      .then((data) => { if (!cancelled) setMarket({ loading: false, error: "", data }); })
+      .catch((e) => { if (!cancelled) setMarket({ loading: false, error: e.message || "Market data unavailable", data: null }); });
+    return () => { cancelled = true; };
+  }, [priced, item.id, item.ticker, item.units, chartRange]);
   const orderedHistory = [...(history || [])].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date));
 
   useEffectPF(() => {
@@ -495,6 +520,32 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
             </button>
             {marketError && <div className="pf-custom-type-error" style={{ gridColumn: "1 / -1" }}>{marketError}</div>}
           </form>
+        )}
+
+        {priced && (
+          <div className="pf-market-chart">
+            <div className="pf-valuation-list-head">
+              <span>{item.ticker} · {market.data ? `${market.data.currency}${market.data.currency !== "SGD" ? " → S$" : ""}` : "market"}</span>
+              <div className="tools" style={{ display: "flex", gap: 8 }}>
+                <div className="seg">
+                  {[["value", "Value"], ["price", "Price"]].map(([m, label]) => (
+                    <button key={m} type="button" className={chartMode === m ? "on" : ""} onClick={() => setChartMode(m)}>{label}</button>
+                  ))}
+                </div>
+                <div className="seg">
+                  {HOLDING_RANGES.map((r) => (
+                    <button key={r} type="button" className={chartRange === r ? "on" : ""} onClick={() => setChartRange(r)}>{r}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {market.loading && !market.data && <div className="hint" style={{ padding: "12px 0" }}>Loading prices…</div>}
+            {market.error && <div className="pf-custom-type-error">{market.error}</div>}
+            {market.data && !market.error && (
+              <NetWorthChart data={buildHoldingChartData(market.data.points, chartMode, { maxLabels: 6 })} height={170}
+                fmtTick={holdingTick} fmtValue={holdingValue} padFraction={0.08} />
+            )}
+          </div>
         )}
 
         <form className="pf-valuation-form" onSubmit={submit}>

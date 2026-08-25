@@ -99,3 +99,20 @@ test("NetWorthChart skips empty x-labels and accepts a tick formatter", () => {
   assert.match(chart, /d\.label &&|d\.label \?|filter\(\(d\) => d\.label\)/);
   assert.doesNotMatch(chart, /\{Math\.round\(v \/ 1000\)\}k\s*<\/text>/);
 });
+
+test("valuation panel fetches market history and renders a Price/Value chart with a range pill", () => {
+  assert.match(source, /apiFetchAssetMarketHistory\(/);
+  assert.match(source, /buildHoldingChartData\(/);
+  assert.match(source, /HOLDING_RANGES/);
+  assert.match(source, /Loading prices/);
+  assert.match(source, /"price"/);
+  assert.match(source, /"value"/);
+  assert.match(source, /<NetWorthChart[^>]*fmtTick/);
+});
+
+test("NetWorthChart exposes padFraction and fmtValue with behaviour-preserving defaults", () => {
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /padFraction/);
+  assert.match(chart, /fmtValue = \(v\) => Math\.round\(v\)\.toLocaleString\("en-SG"\)/);
+  assert.match(source, /<NetWorthChart[^>]*padFraction=\{0\.08\}/);
+});

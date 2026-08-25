@@ -19,6 +19,7 @@ dependencies = [
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
     "google-auth>=2.35.0",
+    "yfinance>=1.6.0",
 ]
 name = "statement-sensei"
 version = "0.10.4"

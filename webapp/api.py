@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 
 from webapp.auth import create_auth_token, verify_auth_token
 from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
+from webapp.market_data import get_market_history
 
 # optional MongoDB — gracefully degrade when not configured
 try:
@@ -524,6 +525,24 @@ async def patch_asset(asset_id: str, request: Request, user: str = Depends(_curr
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"asset": asset}
+
+
+@app.get("/api/portfolio/assets/{asset_id}/market-history")
+async def get_asset_market_history(asset_id: str, range: str = "1Y", user: str = Depends(_current_user)) -> dict:  # noqa: A002
+    """Price and units×price history for a priced holding, in S$. Display-only."""
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    asset = next((a for a in list_portfolio(user)["assets"] if a["id"] == asset_id), None)
+    if asset is None:
+        raise HTTPException(status_code=400, detail="Asset not found")
+    if not asset.get("ticker") or asset.get("units") is None:
+        raise HTTPException(status_code=400, detail="Set a ticker and units on this asset first")
+    try:
+        return get_market_history(asset["ticker"], asset["units"], range)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — feed failures of any kind surface as 502
+        raise HTTPException(status_code=502, detail=f"Market data unavailable: {exc}") from exc
 
 
 @app.delete("/api/portfolio/assets/{asset_id}")
