@@ -42,7 +42,7 @@ function MiniSpark({ data, w = 84, h = 28 }) {
 }
 
 /* ============ Net worth area chart (large) ============ */
-function NetWorthChart({ data, height = 220, privacy = false }) {
+function NetWorthChart({ data, height = 220, privacy = false, fmtTick = (v) => `${Math.round(v / 1000)}k` }) {
   const wrapRef = React.useRef(null);
   const [w, setW] = useStatePF(700);
   useEffectPF(() => {
@@ -91,12 +91,12 @@ function NetWorthChart({ data, height = 220, privacy = false }) {
               <line x1={padX} x2={w - padX} y1={y} y2={y} stroke="var(--rule)" strokeDasharray="2 5" />
               <text x={w - padX + 6} y={y + 3} fontSize="9.5" fill="var(--ink-4)"
                 fontFamily="JetBrains Mono, monospace" letterSpacing="0.06em">
-                {Math.round(v / 1000)}k
+                {fmtTick(v)}
               </text>
             </g>
           );
         })}
-        {data.map((d, i) => (
+        {data.map((d, i) => d.label && (
           <text key={i} x={xAt(i)} y={height - 6} textAnchor="middle"
             fontSize="9.5" fill={i === data.length - 1 ? "var(--accent)" : "var(--ink-4)"}
             fontFamily="JetBrains Mono, monospace" letterSpacing="0.1em">

@@ -92,3 +92,10 @@ test("valuation panel lets the user set ticker and units through the asset PATCH
   assert.match(source, /apiUpdatePortfolioAsset\(/);
   assert.match(source, /onUpdateMarket/);
 });
+
+test("NetWorthChart skips empty x-labels and accepts a tick formatter", () => {
+  const chart = source.slice(source.indexOf("function NetWorthChart"), source.indexOf("function AddRowForm"));
+  assert.match(chart, /fmtTick/);
+  assert.match(chart, /d\.label &&|d\.label \?|filter\(\(d\) => d\.label\)/);
+  assert.doesNotMatch(chart, /\{Math\.round\(v \/ 1000\)\}k\s*<\/text>/);
+});
