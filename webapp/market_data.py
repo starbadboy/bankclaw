@@ -81,7 +81,7 @@ def get_market_history(ticker: str, units: float, range_key: str) -> dict:
     """Price and market-value history for a holding, in base currency."""
     if range_key not in RANGES:
         raise ValueError(f"range must be one of {', '.join(RANGES)}")
-    ticker = str(ticker).upper()  # rows saved before the write-side rule existed may be lowercase
+    ticker = ticker.upper()  # rows saved before the write-side rule existed may be lowercase
     if not TICKER_PATTERN.match(ticker):
         raise ValueError(f"unsupported ticker {ticker!r}")
     currency, closes = _cached_fetch(ticker, range_key)

@@ -272,8 +272,8 @@ def test_market_history_hides_internal_errors_but_keeps_feed_messages():
     ):
         with pytest.raises(HTTPException) as unsafe:
             asyncio.run(get_asset_market_history("a1", range="1Y", user="owner@example.com"))
+        never.assert_not_called()
     assert unsafe.value.status_code == 400
-    never.assert_not_called()
 
     with (
         patch("webapp.api.list_portfolio", return_value=_portfolio_with(asset)),

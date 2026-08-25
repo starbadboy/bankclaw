@@ -492,7 +492,7 @@ function HoldingMarketPanel({ item, busy, onUpdateMarket }) {
       {priced && (
         <div>
           <div className="pf-valuation-list-head">
-            <span>{item.ticker} · {market.data ? `${market.data.currency}${market.data.currency !== "SGD" ? " → S$" : ""}` : "market"}</span>
+            <span>{market.data?.ticker || item.ticker} · {market.data ? `${market.data.currency}${market.data.currency !== "SGD" ? " → S$" : ""}` : "market"}</span>
             <div className="tools" style={{ display: "flex", gap: 8 }}>
               <div className="seg">
                 {[["value", "Value"], ["price", "Price"]].map(([m, label]) => (
