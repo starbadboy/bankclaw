@@ -17,3 +17,10 @@ test("category trend tooltip sums all selected categories for the hovered month"
   assert.match(source, /s\.values\[hoverIdx\]/);
   assert.match(source, /Selected total/);
 });
+
+test("cash flow panel toggles to a spending trend view", () => {
+  assert.match(source, /Spending trend/);
+  assert.match(source, /trendView/);
+  assert.match(source, /computeSpendingTrend/);
+  assert.match(source, /SpendingTrendChart/);
+});

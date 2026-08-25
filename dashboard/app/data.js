@@ -258,6 +258,44 @@ function computePortfolioPerformance(assets, debts, histories, options = {}) {
   return { items, total };
 }
 
+function computeSpendingTrend(transactions, options = {}) {
+  const now = options.now instanceof Date ? options.now : new Date();
+  const excluded = options.excludedCategories || new Set();
+  const monthCount = Math.max(2, Number(options.rangeMonths) || 2);
+
+  const months = [];
+  for (let i = monthCount - 1; i >= 0; i--) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const isCurrent = i === 0;
+    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    const lastDay = isCurrent ? now.getDate() : daysInMonth;
+    months.push({
+      key: `${start.getFullYear()}-${String(start.getMonth()).padStart(2, "0")}`,
+      label: start.toLocaleDateString("en-GB", { month: "short" }).toUpperCase(),
+      cumulative: new Array(lastDay).fill(0),
+      isCurrent,
+    });
+  }
+  const byKey = new Map(months.map((m) => [m.key, m]));
+
+  (transactions || []).forEach((t) => {
+    if (t.amount >= 0) return;                 // money-out only
+    if (excluded.has(t.category)) return;
+    const d = new Date(t.date);
+    const m = byKey.get(`${d.getFullYear()}-${String(d.getMonth()).padStart(2, "0")}`);
+    if (!m) return;
+    const day = d.getDate();
+    if (day > m.cumulative.length) return;     // future-dated inside current month
+    m.cumulative[day - 1] += -t.amount;
+  });
+
+  months.forEach((m) => {
+    for (let i = 1; i < m.cumulative.length; i++) m.cumulative[i] += m.cumulative[i - 1];
+    for (let i = 0; i < m.cumulative.length; i++) m.cumulative[i] = Math.round(m.cumulative[i] * 100) / 100;
+  });
+  return months;
+}
+
 // ── Formatting ─────────────────────────────────────────────────────────────
 
 function fmtSGD(n, privacy = false) {
@@ -287,6 +325,6 @@ function relDateGroup(iso) {
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend,
   fmtSGD, fmtDate, relDateGroup,
 });

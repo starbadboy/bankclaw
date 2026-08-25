@@ -231,3 +231,56 @@ test("performance debt series follows the improvement direction of its own row",
   // pay-down is +1000 (green); the sparkline must rise with it, not fall
   assert.deepEqual(rows.items[0].series, [-8000, -7000]);
 });
+
+test("spending trend accumulates money-out per day and respects exclusions", () => {
+  const txns = [
+    { date: "2025-08-05", amount: -100, category: "food" },
+    { date: "2025-08-05", amount: -50, category: "rent" },     // excluded
+    { date: "2025-08-10", amount: 200, category: "salary" },   // income ignored
+    { date: "2025-08-12", amount: -25.5, category: "food" },
+    { date: "2025-07-03", amount: -40, category: "food" },
+  ];
+  const trend = computeSpendingTrend(txns, {
+    rangeMonths: 1, excludedCategories: new Set(["rent"]), now: new Date(2025, 7, 15),
+  });
+  assert.equal(trend.length, 2);                       // max(2, N): current + last
+  const [july, august] = trend;
+  assert.equal(august.isCurrent, true);
+  assert.equal(august.cumulative.length, 15);          // cut at now (Aug 15)
+  assert.equal(august.cumulative[4], 100);             // day 5: rent excluded
+  assert.equal(august.cumulative[11], 125.5);          // day 12 cumulative
+  assert.equal(august.cumulative[14], 125.5);          // income never counted
+  assert.equal(july.isCurrent, false);
+  assert.equal(july.cumulative.length, 31);            // full July
+  assert.equal(july.cumulative[30], 40);
+});
+
+test("spending trend emits a zero series for months with no qualifying spend", () => {
+  const trend = computeSpendingTrend([], { rangeMonths: 3, now: new Date(2025, 7, 15) });
+  assert.equal(trend.length, 3);                       // current + 2 prior
+  assert.deepEqual(trend[0].cumulative, new Array(30).fill(0));  // June has 30 days
+  assert.equal(trend[1].cumulative.length, 31);        // July
+});
+
+test("spending trend handles leap february and month boundaries", () => {
+  const txns = [
+    { date: "2024-02-29", amount: -10, category: "food" },
+    { date: "2024-01-31", amount: -20, category: "food" },
+  ];
+  const trend = computeSpendingTrend(txns, { rangeMonths: 2, now: new Date(2024, 1, 29) });
+  const [jan, feb] = trend;
+  assert.equal(feb.cumulative.length, 29);             // leap day included
+  assert.equal(feb.cumulative[28], 10);
+  assert.equal(jan.cumulative.length, 31);
+  assert.equal(jan.cumulative[30], 20);
+});
+
+test("spending trend ignores transactions outside the window", () => {
+  const txns = [
+    { date: "2025-03-01", amount: -999, category: "food" },  // before window
+    { date: "2025-08-01", amount: -1, category: "food" },
+  ];
+  const trend = computeSpendingTrend(txns, { rangeMonths: 3, now: new Date(2025, 7, 15) });
+  const total = trend.reduce((s, m) => s + m.cumulative[m.cumulative.length - 1], 0);
+  assert.equal(total, 1);
+});

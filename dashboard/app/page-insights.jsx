@@ -38,6 +38,53 @@ function _ctMonthsBetween(start, end) {
   return out;
 }
 
+function SpendingTrendChart({ trend, height = 220, privacy = false }) {
+  const wrapRef = useRefIN(null);
+  const [w, setW] = useStateIN(700);
+
+  useEffectIN(() => {
+    if (!wrapRef.current) return;
+    const ro = new ResizeObserver((ents) => { for (const e of ents) setW(e.contentRect.width); });
+    ro.observe(wrapRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const padL = 44, padR = 12, padTop = 14, padBottom = 28;
+  const innerW = Math.max(50, w - padL - padR);
+  const innerH = Math.max(40, height - padTop - padBottom);
+  const maxVal = Math.max(1, ...trend.flatMap((m) => m.cumulative));
+  const xAt = (day) => padL + ((day - 1) / 30) * innerW;   // fixed 1..31 domain — shorter months end early
+  const yAt = (v) => padTop + (1 - v / maxVal) * innerH;
+  const ticks = [0, 0.5, 1].map((f) => f * maxVal);
+  const fmtTick = (v) => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : Math.round(v).toString();
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <svg width="100%" height={height} style={{ display: "block", filter: privacy ? "blur(6px)" : "none" }}>
+        {ticks.map((v, i) => (
+          <g key={i}>
+            <line x1={padL} x2={w - padR} y1={yAt(v)} y2={yAt(v)} stroke="var(--rule)" strokeWidth="1" />
+            <text x={padL - 8} y={yAt(v) + 3.5} textAnchor="end" fontSize="10" fill="var(--ink-4)" className="mono">{fmtTick(v)}</text>
+          </g>
+        ))}
+        {trend.map((m, mi) => {
+          const age = trend.length - 1 - mi;               // 0 = newest
+          const pts = m.cumulative.map((v, di) => `${xAt(di + 1)},${yAt(v)}`).join(" ");
+          return (
+            <polyline key={m.key} points={pts} fill="none"
+              stroke={age === 0 ? "var(--debit)" : "var(--ink-3)"}
+              strokeWidth={age === 0 ? 2 : 1.4}
+              strokeDasharray={age === 0 ? "none" : "5 4"}
+              opacity={age === 0 ? 1 : Math.max(0.25, 0.7 - age * 0.12)} />
+          );
+        })}
+        <text x={padL} y={height - 6} fontSize="10" fill="var(--ink-4)" className="mono">1</text>
+        <text x={xAt(31)} y={height - 6} textAnchor="end" fontSize="10" fill="var(--ink-4)" className="mono">31</text>
+      </svg>
+    </div>
+  );
+}
+
 function CategoryTrendChart({ months, series, height = 280, privacy = false }) {
   const wrapRef = useRefIN(null);
   const [w, setW] = useStateIN(700);
@@ -216,6 +263,15 @@ function InsightsPage({ transactions, privacy }) {
   // Monthly bars — driven by filtered range, respecting category exclusions.
   // Exclusions only affect spend rows; income rows are always positive amounts
   // and never appear in `excludedCats` (which only holds spend-side category ids).
+  const [trendView, setTrendView] = useStateIN("cashflow");
+  const trend = useMemoIN(
+    () => computeSpendingTrend(transactions, {
+      rangeMonths: range === "all" ? 12 : parseInt(range, 10),
+      excludedCategories: excludedCats,
+    }),
+    [transactions, range, excludedCats],
+  );
+
   const months = useMemoIN(() => {
     const bucketMap = new Map();
     filtered.forEach((t) => {
@@ -399,12 +455,20 @@ function InsightsPage({ transactions, privacy }) {
                   {excludedCats.size} hidden
                 </span>
               )}
+              <div className="seg">
+                <button className={trendView === "cashflow" ? "on" : ""} onClick={() => setTrendView("cashflow")}>Cash flow</button>
+                <button className={trendView === "trend" ? "on" : ""} onClick={() => setTrendView("trend")}>Spending trend</button>
+              </div>
+              {trendView === "cashflow" && (<>
               <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>
               <span><span className="sw" style={{ background: "oklch(0.48 0.11 35)" }}></span>Out</span>
+              </>)}
             </div>
           </div>
           <div className="panel-pad">
-            <Bars data={months} height={220} privacy={privacy} />
+            {trendView === "cashflow"
+              ? <Bars data={months} height={220} privacy={privacy} />
+              : <SpendingTrendChart trend={trend} height={220} privacy={privacy} />}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, marginTop: 20, paddingTop: 20, borderTop: "1px solid var(--rule)" }}>
               <div><div className="tag">6-month income</div><div className="display tnum" style={{ fontSize: 24, color: "var(--credit)" }}>{fmtSGD(months.reduce((s,m)=>s+m.income,0), privacy)}</div></div>
               <div><div className="tag">6-month spend</div><div className="display tnum" style={{ fontSize: 24, color: "var(--debit)" }}>{fmtSGD(-months.reduce((s,m)=>s+m.spend,0), privacy)}</div></div>
