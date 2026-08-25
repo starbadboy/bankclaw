@@ -6,7 +6,7 @@
 **Goal:** In a holding's valuation panel, let the user set Ticker + Units and see a Price | Value line chart (S$, 1M/3M/1Y/All) fetched from yfinance, display-only.
 **Architecture:** FastAPI route → new `webapp/market_data.py` (yfinance adapter + pure series builder + TTL cache) → `dashboard/app/api.js` → `page-portfolio.jsx` ValuationPanel (reusing `NetWorthChart` and `.seg` pills) with a pure series helper in `data.js`.
 **Complexity Path:** `Simplified TDD path` — `tests/e2e` is Streamlit-mocked, not a browser harness.
-**Status:** Draft
+**Status:** In Progress
 **Branch:** `feat/holding-price-trend`
 
 ## Architecture Review
@@ -99,3 +99,4 @@ Reused as-is: `PATCH /api/portfolio/assets/{id}` + `apiUpdatePortfolioAsset`, `.
 |---|---|---|---|
 | 2026-08-25 | Phase 0–2 | Done | intent.md confirmed; test points confirmed; spec.md saved |
 | 2026-08-25 | Interrogation pass | Done | 3 findings fixed: (1) yfinance must be lazy-imported or route tests that stub pandas break; (2) 404-vs-400 for missing asset made explicit (follow existing ValueError→400 convention); (3) `index.html` cache-buster bumps were missing from tasks |
+| 2026-08-25 | Task 1 | Done | units on create/update_asset (6-dp, ≥0); Market data row + `handleUpdateAssetMarket` in ValuationPanel; `page-portfolio.jsx?v=6`. Evidence: integration+api tests 14+N pass; `node --test page-portfolio.test.js` 13/13; esbuild clean. Fast loop `uv run pytest tests/integration tests/unit tests/test_*.py` → 144 passed, 17 failed — all 17 = `ServerSelectionTimeoutError localhost:27017` in test_history/test_visualizations (no local Mongo; pre-existing, 30 s each → 11 min run). |

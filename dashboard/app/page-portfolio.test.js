@@ -83,3 +83,12 @@ test("performance tab renders windowed changes from the data helper", () => {
   assert.match(source, /PERF_WINDOWS/);
   assert.match(source, /row\.series/);
 });
+
+test("valuation panel lets the user set ticker and units through the asset PATCH api", () => {
+  assert.match(source, /Market data/);
+  assert.match(source, /Ticker/);
+  assert.match(source, /Units/);
+  assert.match(source, /handleUpdateAssetMarket/);
+  assert.match(source, /apiUpdatePortfolioAsset\(/);
+  assert.match(source, /onUpdateMarket/);
+});

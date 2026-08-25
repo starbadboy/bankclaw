@@ -425,15 +425,30 @@ function AssetTypeManager({ assetTypes, assets, busyId, onCreate, onUpdate, onDe
   );
 }
 
-function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClose }) {
+function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClose, onUpdateMarket }) {
   const [asOfDate, setAsOfDate] = useStatePF(portfolioTodayIso());
   const [value, setValue] = useStatePF(String(item.value ?? ""));
+  const [ticker, setTicker] = useStatePF(item.ticker || "");
+  const [units, setUnits] = useStatePF(item.units == null ? "" : String(item.units));
+  const [marketError, setMarketError] = useStatePF("");
   const orderedHistory = [...(history || [])].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date));
 
   useEffectPF(() => {
     setAsOfDate(portfolioTodayIso());
     setValue(String(item.value ?? ""));
+    setTicker(item.ticker || "");
+    setUnits(item.units == null ? "" : String(item.units));
+    setMarketError("");
   }, [item.id]);
+
+  const submitMarket = async (event) => {
+    event.preventDefault();
+    const parsedUnits = units.trim() === "" ? null : parseFloat(units.replace(/[, ]/g, ""));
+    if (parsedUnits != null && (!isFinite(parsedUnits) || parsedUnits < 0)) { setMarketError("Units must be zero or more"); return; }
+    setMarketError("");
+    try { await onUpdateMarket({ ticker: ticker.trim().toUpperCase() || null, units: parsedUnits }); }
+    catch (e) { setMarketError(e.message || "Failed to save market data"); }
+  };
 
   const submit = (event) => {
     event.preventDefault();
@@ -460,6 +475,27 @@ function ValuationPanel({ itemType, item, history, busy, onSave, onDelete, onClo
             <Icon name="close" size={16} stroke={1.8} />
           </button>
         </div>
+
+        {itemType === "asset" && (
+          <form className="pf-valuation-form pf-market-form" onSubmit={submitMarket}>
+            <div className="pf-valuation-list-head" style={{ gridColumn: "1 / -1", padding: "0 0 2px" }}>
+              <span>Market data</span>
+              <span>{item.ticker && item.units != null ? `${item.ticker} · ${item.units} units` : "optional"}</span>
+            </div>
+            <label>
+              <span>Ticker</span>
+              <input value={ticker} onChange={(event) => setTicker(event.target.value)} placeholder="e.g. ADSK, D05.SI" />
+            </label>
+            <label>
+              <span>Units</span>
+              <input value={units} onChange={(event) => setUnits(event.target.value)} inputMode="decimal" placeholder="e.g. 672" />
+            </label>
+            <button className="btn" type="submit" disabled={busy}>
+              <Icon name="check" size={12} stroke={2} /> Save market data
+            </button>
+            {marketError && <div className="pf-custom-type-error" style={{ gridColumn: "1 / -1" }}>{marketError}</div>}
+          </form>
+        )}
 
         <form className="pf-valuation-form" onSubmit={submit}>
           <label>
@@ -698,6 +734,16 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
       if (activeValuation?.itemType === "debt" && activeValuation.itemId === id) setActiveValuation(null);
     } catch (e) { setErr(e.message || "Failed to delete debt"); }
     finally { setBusyId(null); }
+  };
+
+  const handleUpdateAssetMarket = async (payload) => {
+    if (!activeValuation || activeValuation.itemType !== "asset") return;
+    const id = activeValuation.itemId;
+    setBusyId(`valuation:asset:${id}`);
+    try {
+      const updated = await apiUpdatePortfolioAsset(id, payload);
+      setAssets((cur) => cur.map((a) => (a.id === id ? { ...a, ...updated } : a)));
+    } finally { setBusyId(null); }
   };
 
   const handleRecordValuation = async (payload) => {
@@ -1200,6 +1246,7 @@ function PortfolioPage({ privacy, sub = "pf-networth" }) {
           busy={busyId === `valuation:${activeValuation.itemType}:${activeValuation.itemId}`}
           onSave={handleRecordValuation}
           onDelete={handleDeleteValuation}
+          onUpdateMarket={handleUpdateAssetMarket}
           onClose={() => setActiveValuation(null)}
         />
       )}
