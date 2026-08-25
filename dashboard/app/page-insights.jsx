@@ -41,6 +41,7 @@ function _ctMonthsBetween(start, end) {
 function SpendingTrendChart({ trend, height = 220, privacy = false }) {
   const wrapRef = useRefIN(null);
   const [w, setW] = useStateIN(700);
+  const [hoverDay, setHoverDay] = useStateIN(null);
 
   useEffectIN(() => {
     if (!wrapRef.current) return;
@@ -58,8 +59,16 @@ function SpendingTrendChart({ trend, height = 220, privacy = false }) {
   const ticks = [0, 0.5, 1].map((f) => f * maxVal);
   const fmtTick = (v) => v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : Math.round(v).toString();
 
+  const handleMove = (e) => {
+    const rect = wrapRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const day = Math.max(1, Math.min(31, Math.round(((x - padL) / Math.max(1, innerW)) * 30) + 1));
+    setHoverDay(day);
+  };
+
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}
+      onMouseMove={handleMove} onMouseLeave={() => setHoverDay(null)}>
       <svg width="100%" height={height} style={{ display: "block", filter: privacy ? "blur(6px)" : "none" }}>
         {ticks.map((v, i) => (
           <g key={i}>
@@ -78,9 +87,48 @@ function SpendingTrendChart({ trend, height = 220, privacy = false }) {
               opacity={age === 0 ? 1 : Math.max(0.25, 0.7 - age * 0.12)} />
           );
         })}
+        {trend.map((m) => {
+          if (!m.isCurrent || m.cumulative.length === 0) return null;
+          const lastDay = m.cumulative.length;
+          return (
+            <g key={`${m.key}-end`}>
+              <circle cx={xAt(lastDay)} cy={yAt(m.cumulative[lastDay - 1])} r="5" fill="var(--debit)" opacity="0.25" />
+              <circle cx={xAt(lastDay)} cy={yAt(m.cumulative[lastDay - 1])} r="2.5" fill="var(--debit)" />
+            </g>
+          );
+        })}
+        {hoverDay != null && (
+          <line x1={xAt(hoverDay)} x2={xAt(hoverDay)} y1={padTop} y2={height - padBottom} stroke="var(--ink-4)" strokeDasharray="2 3" />
+        )}
         <text x={padL} y={height - 6} fontSize="10" fill="var(--ink-4)" className="mono">1</text>
         <text x={xAt(31)} y={height - 6} textAnchor="end" fontSize="10" fill="var(--ink-4)" className="mono">31</text>
       </svg>
+      {hoverDay != null && (
+        <div style={{ position: "absolute", top: 8, right: 8, background: "var(--panel-2, var(--panel))", border: "1px solid var(--rule)",
+          borderRadius: 8, padding: "8px 12px", fontSize: 12, pointerEvents: "none", boxShadow: "0 4px 14px rgba(0,0,0,0.12)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Total to day {hoverDay}</div>
+          {trend.map((m) => {
+            const has = hoverDay <= m.cumulative.length;
+            return (
+              <div key={m.key} style={{ display: "flex", justifyContent: "space-between", gap: 16 }}>
+                <span style={{ color: m.isCurrent ? "var(--debit)" : "var(--ink-3)" }}>{m.label}{m.isCurrent ? " · now" : ""}</span>
+                <span className="tnum">{has ? fmtSGD(m.cumulative[hoverDay - 1], privacy) : "—"}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className="legend" style={{ marginTop: 8, display: "flex", gap: 12, fontSize: 11 }}>
+        {trend.map((m) => {
+          const age = trend.length - 1 - trend.indexOf(m);
+          return (
+            <span key={m.key} style={{ opacity: m.isCurrent ? 1 : Math.max(0.4, 0.8 - age * 0.1) }}>
+              <span className="sw" style={{ background: m.isCurrent ? "var(--debit)" : "var(--ink-3)" }}></span>
+              {m.label}{m.isCurrent ? " (to date)" : ""}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }

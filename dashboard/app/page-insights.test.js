@@ -24,3 +24,9 @@ test("cash flow panel toggles to a spending trend view", () => {
   assert.match(source, /computeSpendingTrend/);
   assert.match(source, /SpendingTrendChart/);
 });
+
+test("spending trend hover shows each month's cumulative at the day, with progress marker", () => {
+  assert.match(source, /trendHoverDay|hoverDay/);
+  assert.match(source, /isCurrent/);
+  assert.match(source, /Total to day|to day/);
+});
