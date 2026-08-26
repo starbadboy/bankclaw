@@ -44,7 +44,7 @@ function GoalPreview({ draft, goalCtx, assetKinds, privacy }) {
           <span className="tag">{goalKindTag(kind)}</span>
           <strong>{draft.name?.trim() || "Preview"}</strong>
         </div>
-        <div className="pf-goal-pct tnum">{pct}</div>
+        <div className={"pf-goal-pct tnum" + (hasTarget ? "" : " muted")}>{pct}</div>
       </div>
       <div className="pf-goal-bar"><div style={{ width: `${hasTarget ? result.progress * 100 : 0}%` }} /></div>
       <div className="pf-goal-meta"><span>{text}{draft.target_date ? ` · by ${draft.target_date}` : ""}</span></div>

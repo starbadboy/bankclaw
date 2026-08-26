@@ -185,7 +185,7 @@ test("goal form uses the labelled add-grid idiom and previews the draft through 
   assert.match(goalsSource, /baseline set when you save/i);
   assert.match(goalsSource, /GoalForm[^]*goalCtx=\{goalCtx\}/); // GoalsCard passes the live context into the form
   assert.match(source, /<GoalsCard[^]*goalCtx=\{goalCtx\}/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=3"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=([4-9]|\d{2,})"/);
   assert.match(fs.readFileSync(path.join(__dirname, "styles.css"), "utf8"), /\.pf-goal-form\b[^}]*auto-fit/);
 });
 
