@@ -412,3 +412,9 @@ test("pickNearestGoal prefers the unfinished goal with the highest progress, tie
   assert.equal(pickNearestGoal([goals[0]], results), null);
   assert.equal(pickNearestGoal([], results), null);
 });
+
+test("pickNearestGoal comparator is stable on exact ties", () => {
+  const goals = [{ id: "x", target_date: "2027-01-01" }, { id: "y", target_date: "2027-01-01" }];
+  const results = { x: { progress: 0.5, done: false }, y: { progress: 0.5, done: false } };
+  assert.equal(pickNearestGoal(goals, results).id, pickNearestGoal([...goals].reverse(), results).id);
+});

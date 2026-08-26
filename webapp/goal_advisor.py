@@ -23,8 +23,15 @@ _CACHE_COLLECTION = "ai_goal_suggestions"
 _KINDS = {"net_worth", "debt_payoff", "allocation"}
 _PRIORITIES = {"low", "medium", "high"}
 _MAX_SUGGESTIONS = 5
-_LOCKS_GUARD = threading.Lock()
-_USER_LOCKS: dict[str, threading.Lock] = {}  # ponytail: per-process; a Mongo lease if the app runs multi-worker
+_LLM_TIMEOUT_SECONDS = 180  # DeepSeek structured output has been observed at ~100 s
+# ponytail: one generation at a time process-wide; per-user locks or a Mongo lease if users ever queue behind each other.
+_GEN_LOCK = threading.Lock()
+
+
+class AdvisorNotConfigured(ValueError):
+    """Raised when a generation is needed but DEEPSEEK_API_KEY is not set."""
+
+
 _BUILTIN_KIND_NAMES = {
     "cash": "Cash & savings",
     "equities": "Equities",
@@ -88,10 +95,10 @@ def _net_worth_trend(assets: list[dict], debts: list[dict], histories: dict, mon
     trend = []
     for month in all_months:
         total = 0.0
-        for item, sign, prefix in ((a, 1, "asset") for a in assets):
-            value = _latest_on_or_before(histories.get(f"{prefix}:{item['id']}", []), month)
+        for asset in assets:
+            value = _latest_on_or_before(histories.get(f"asset:{asset['id']}", []), month)
             if value is not None:
-                total += sign * value
+                total += value
         for debt in debts:
             value = _latest_on_or_before(histories.get(f"debt:{debt['id']}", []), month)
             if value is not None:
@@ -100,20 +107,13 @@ def _net_worth_trend(assets: list[dict], debts: list[dict], histories: dict, mon
     return trend
 
 
-def _goal_progress(goal: dict, net: float, debts_by_id: dict, allocation_pct: dict) -> float:
+def _goal_target(goal: dict) -> float:
     kind = goal.get("kind") or "net_worth"
-    if kind == "debt_payoff":
-        debt = debts_by_id.get(goal.get("debt_id"))
-        baseline = float(goal.get("baseline") or 0.0)
-        if not debt or baseline <= 0:
-            return 0.0
-        return round(max(0.0, min(1.0, (baseline - float(debt.get("value") or 0.0)) / baseline)), 2)
+    if kind == "net_worth":
+        return float(goal.get("target_amount") or 0.0)
     if kind == "allocation":
-        target = float(goal.get("target_pct") or 0.0)
-        current = allocation_pct.get(goal.get("asset_kind"), 0.0)
-        return round(max(0.0, min(1.0, 1 - abs(current - target) / max(1.0, target))), 2)
-    target = float(goal.get("target_amount") or 0.0)
-    return round(max(0.0, min(1.0, net / target)), 2) if target > 0 else 0.0
+        return float(goal.get("target_pct") or 0.0)
+    return 0
 
 
 def build_goal_aggregate(
@@ -135,9 +135,7 @@ def build_goal_aggregate(
         }
         for kind, value in sorted(by_kind.items(), key=lambda kv: -kv[1])
     ]
-    allocation_pct = {row["kind"]: row["pct"] for row in allocation}
     net = round(total_assets - total_debts, 2)
-    debts_by_id = {d["id"]: d for d in debts}
     return {
         "net_worth": net,
         "total_assets": total_assets,
@@ -154,16 +152,7 @@ def build_goal_aggregate(
             for i, d in enumerate(debts)
         ],
         "net_worth_trend": _net_worth_trend(assets, debts, histories),
-        "existing_goals": [
-            {
-                "kind": g.get("kind") or "net_worth",
-                "target": float(g.get("target_amount") or 0.0)
-                if (g.get("kind") or "net_worth") == "net_worth"
-                else (float(g.get("target_pct") or 0.0) if g.get("kind") == "allocation" else 0),
-                "progress": _goal_progress(g, net, debts_by_id, allocation_pct),
-            }
-            for g in goals
-        ],
+        "existing_goals": [{"kind": g.get("kind") or "net_worth", "target": _goal_target(g)} for g in goals],
     }
 
 
@@ -257,10 +246,10 @@ def normalize_suggestions(
 def _call_llm(aggregate: dict) -> dict:
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
-        raise ValueError("DEEPSEEK_API_KEY not set")
+        raise AdvisorNotConfigured("DEEPSEEK_API_KEY not set")
     from openai import OpenAI  # noqa: PLC0415 — lazy: keeps this module light and the route tests importable
 
-    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL)
+    client = OpenAI(api_key=api_key, base_url=DEEPSEEK_BASE_URL, timeout=_LLM_TIMEOUT_SECONDS)
     completion = client.chat.completions.create(
         model=get_deepseek_model(),
         messages=[
@@ -286,12 +275,13 @@ def _visible(doc: dict) -> list[dict]:
 
 
 def get_suggestions(
-    user_email: str, portfolio: dict, *, force_refresh: bool = False, dismiss: str | None = None
-) -> dict:
+    user_email: str, build_portfolio, *, force_refresh: bool = False, dismiss: str | None = None
+) -> dict:  # noqa: ANN001
     """Return ``{suggestions, snapshot, generated_at, from_cache}`` for the user, generating when needed.
 
-    ``portfolio`` = {assets, debts, histories, goals, asset_kind_names}. Raises ``ValueError`` when
-    generation is required and no API key is configured.
+    ``build_portfolio`` is a zero-arg callable returning {assets, debts, histories, goals, asset_kind_names};
+    it is only invoked when a generation actually happens. Raises ``AdvisorNotConfigured`` when generation
+    is required and no API key is set.
     """
     _ensure_indexes()
     coll = get_db()[_CACHE_COLLECTION]
@@ -301,28 +291,25 @@ def get_suggestions(
         coll.update_one({"user_email": user_email}, {"$addToSet": {"dismissed_ids": dismiss}})
         cached = {**cached, "dismissed_ids": [*(cached.get("dismissed_ids") or []), dismiss]}
     if cached and not force_refresh:
-        return {
-            "suggestions": _visible(cached),
-            "snapshot": cached.get("snapshot"),
-            "generated_at": cached.get("generated_at"),
-            "from_cache": True,
-        }
+        return _from_doc(cached)
 
     if not os.getenv("DEEPSEEK_API_KEY"):
-        raise ValueError("DEEPSEEK_API_KEY not set")
-    with _LOCKS_GUARD:
-        lock = _USER_LOCKS.setdefault(user_email, threading.Lock())
-    with lock:  # one generation per user at a time; late arrivals read what the first one saved
+        raise AdvisorNotConfigured("DEEPSEEK_API_KEY not set")
+    with _GEN_LOCK:  # late arrivals read what the first generation saved
         if not force_refresh:
             fresh = coll.find_one({"user_email": user_email}, {"_id": 0})
             if fresh:
-                return {
-                    "suggestions": _visible(fresh),
-                    "snapshot": fresh.get("snapshot"),
-                    "generated_at": fresh.get("generated_at"),
-                    "from_cache": True,
-                }
-        return _generate(user_email, coll, portfolio)
+                return _from_doc(fresh)
+        return _generate(user_email, coll, build_portfolio())
+
+
+def _from_doc(doc: dict) -> dict:
+    return {
+        "suggestions": _visible(doc),
+        "snapshot": doc.get("snapshot"),
+        "generated_at": doc.get("generated_at"),
+        "from_cache": True,
+    }
 
 
 def _generate(user_email: str, coll, portfolio: dict) -> dict:  # noqa: ANN001

@@ -476,25 +476,30 @@ async def get_goal_suggestions(request: Request, user: str = Depends(_current_us
     except Exception:  # noqa: BLE001 — empty or non-JSON body means defaults
         body = {}
     body = body if isinstance(body, dict) else {}
-    from webapp.goal_advisor import get_suggestions  # noqa: PLC0415 — lazy, like ai_coach
+    raw_dismiss = body.get("dismiss")
+    if raw_dismiss not in (None, "") and not isinstance(raw_dismiss, str):
+        raise HTTPException(status_code=400, detail="dismiss must be a suggestion id")
+    from webapp.goal_advisor import AdvisorNotConfigured, get_suggestions  # noqa: PLC0415 — lazy, like ai_coach
 
-    portfolio = list_portfolio(user)
-    histories = {
-        f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
-        for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
-        for item in items
-    }
-    asset_kind_names = {
-        "cash": "Cash & savings", "equities": "Equities", "bonds": "Bonds",
-        "retirement": "Retirement", "property": "Property", "crypto": "Crypto",
-        **{t["id"]: t["name"] for t in list_asset_types(user)},
-    }
-    snapshot = {**portfolio, "histories": histories, "goals": list_goals(user), "asset_kind_names": asset_kind_names}
+    def build_portfolio() -> dict:  # only runs when a generation is needed
+        portfolio = list_portfolio(user)
+        histories = {
+            f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
+            for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
+            for item in items
+        }
+        return {
+            **portfolio,
+            "histories": histories,
+            "goals": list_goals(user),
+            "asset_kind_names": {t["id"]: t["name"] for t in list_asset_types(user)},
+        }
+
     try:
         return await asyncio.to_thread(
-            get_suggestions, user, snapshot, force_refresh=bool(body.get("force_refresh")), dismiss=body.get("dismiss") or None
+            get_suggestions, user, build_portfolio, force_refresh=bool(body.get("force_refresh")), dismiss=raw_dismiss or None
         )
-    except ValueError as exc:  # no API key configured
+    except AdvisorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         logging.getLogger(__name__).warning("goal suggestions failed for %s: %r", user, exc)

@@ -430,9 +430,6 @@ def delete_asset_type(user_email: str, type_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-_GOAL_KINDS = {"net_worth", "debt_payoff", "allocation"}
-
-
 def _serialize_goal(doc: dict) -> dict:
     return {
         "id": str(doc["_id"]),
@@ -454,10 +451,10 @@ def _normalize_target_pct(raw: object) -> float:
     return pct
 
 
-def _goal_kind_fields(user_email: str, kind: str, payload: dict) -> dict:
-    """Kind-specific fields for a new goal, including a default name."""
+def _goal_kind_fields(user_email: str, kind: str, payload: dict) -> tuple[dict, str | None]:
+    """Kind-specific fields for a new goal and the default name to use when none is given."""
     if kind == "net_worth":
-        return {"target_amount": _normalize_goal_target(payload.get("target_amount")), "default_name": None}
+        return {"target_amount": _normalize_goal_target(payload.get("target_amount"))}, None
     if kind == "debt_payoff":
         if not payload.get("debt_id"):
             raise ValueError("debt_id is required for a debt payoff goal")
@@ -465,14 +462,14 @@ def _goal_kind_fields(user_email: str, kind: str, payload: dict) -> dict:
         debt = get_db()[_DEBTS_COLLECTION].find_one({"_id": oid, "user_email": user_email})
         if not debt:
             raise ValueError("Debt not found")
-        return {"debt_id": oid, "baseline": float(debt.get("value") or 0.0), "default_name": f"Pay off {debt['name']}"}
+        return {"debt_id": oid, "baseline": float(debt.get("value") or 0.0)}, f"Pay off {debt['name']}"
     if kind == "allocation":
         if not payload.get("asset_kind"):
             raise ValueError("asset_kind is required for an allocation goal")
         asset_kind = _validate_asset_kind(user_email, str(payload["asset_kind"]))
         pct = _normalize_target_pct(payload.get("target_pct"))
-        label = {"cash": "Cash & savings"}.get(asset_kind, asset_kind.replace("_", " ").capitalize())
-        return {"asset_kind": asset_kind, "target_pct": pct, "default_name": f"{label} at {pct:g}%"}
+        label = "Cash & savings" if asset_kind == "cash" else asset_kind.replace("_", " ").capitalize()
+        return {"asset_kind": asset_kind, "target_pct": pct}, f"{label} at {pct:g}%"
     raise ValueError(f"Unknown goal kind '{kind}'")
 
 
@@ -502,8 +499,7 @@ def create_goal(user_email: str, payload: dict) -> dict:
     _ensure_indexes()
     now = _now_iso()
     kind = str(payload.get("kind") or "net_worth")
-    fields = _goal_kind_fields(user_email, kind, payload)
-    default_name = fields.pop("default_name")
+    fields, default_name = _goal_kind_fields(user_email, kind, payload)
     name = _clean_str(payload.get("name"), field="name", max_len=80, required=default_name is None) or default_name
     doc = {
         "user_email": user_email,

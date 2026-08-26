@@ -247,7 +247,8 @@ function pickNearestGoal(goals, resultsById) {
   const open = (goals || []).filter((g) => resultsById?.[g.id] && !resultsById[g.id].done && !resultsById[g.id].missing);
   if (!open.length) return null;
   return [...open].sort((a, b) => (resultsById[b.id].progress - resultsById[a.id].progress)
-    || ((a.target_date || "9999") < (b.target_date || "9999") ? -1 : 1))[0];
+    || (a.target_date || "9999").localeCompare(b.target_date || "9999")
+    || String(a.id).localeCompare(String(b.id)))[0];
 }
 
 function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
