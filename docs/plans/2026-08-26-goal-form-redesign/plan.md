@@ -80,6 +80,7 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 | 2026-08-26 | Fix pass #2 | Done | null-safe preview text, create guard; a9c4bbd |
 | 2026-08-26 | cleanup | Done | demo user goalform-demo@local.test: 3 assets, 1 debt, 3 goals deleted via API (all 200, 0 remaining); ai_goal_suggestions cache doc (1) and the auto-created default `profiles` doc (1) deleted via webapp.db; collection scan shows 0 docs left for the user |
 | 2026-08-26 | Fix-pass verification #2 (Opus 5) | Done | **Clean with nits** — 3/3 addressed; runtime probe 104 renders, 0 throws (pre-fix threw on every debt draft) |
+| 2026-08-26 | Follow-ups (branch feat/goal-form-followups) | Done | render probe, automatic ?v=, CLAUDE.md lessons, repar proposal (07b3584); single-reviewer Block → CRITICAL pre-existing path traversal in serve_spa fixed + no-cache index + ns mtimes + CI node step (next commit) |
 | 2026-08-26 | Complete | Done | branch feat/goal-form-redesign; merge/PR on user instruction |
 
 ## Evidence
@@ -125,3 +126,8 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 - Nit (recorded, not fixed): `?? 0` guards a string that is built and discarded for other kinds — a `switch` would compute one branch; left as is with the intent documented in the test comment.
 - Gates: 63 JS tests pass; esbuild exit 0.
 - **Follow-ups (not done):** executed tests for `GoalPreview` derivation (would need a DOM/transpile harness or moving the derivation into `data.js`); `ai_coach.py` client timeout and `page-portfolio.jsx` lift-outs carried over from the previous goals plan.
+
+### Follow-ups (feat/goal-form-followups)
+- Hand-bumped cache-busters are gone: `index.html` carries `?v=__V__` on every tag; `webapp/dashboard_assets.py` injects a version from the newest mtime (ns) among `index.html` + `app/*`; `/` and the SPA fallback return it with `Cache-Control: no-cache`. The cache-buster numbers narrated above are history only.
+- Single reviewer (Opus 5, all three axes — the policy the repar proposal recommends for a ~250-line diff): **Block** on a CRITICAL **pre-existing** path traversal in `serve_spa` (`GET /..%2f.env` returned the real `.env`; `path:path` is URL-decoded and `_DASHBOARD / path` escaped the root). Fixed: `_DASHBOARD` resolved, `asset.resolve().is_relative_to(_DASHBOARD)` guard; route tests for `../.env`, `../webapp/api.py`, `app/../../.env`, `/etc/passwd` traversal + a real asset. Also from the review: `Cache-Control: no-cache` on the shell; `st_mtime_ns` (same-second edits) with `suppress(OSError)` for vanishing temp files + `ponytail:` ceiling note; route-level test that `/` substitutes the placeholder; CI runs `npm ci && npm test && npm run jsx-check`; probe nits (tautological count → floor, privacy dimension dropped, redundant `Object.assign` removed); one `?v=\d` assertion over all tags. Declined: none.
+- Gates: Python fast loop **207 passed**; JS 4/30/3/5/23/1; esbuild 0; probe fails 3/3 on f79af88 (negative control).

@@ -1,18 +1,25 @@
 """Dashboard asset versioning.
 
 `index.html` references its scripts and stylesheet with `?v=__V__`; the server replaces the placeholder with a
-version derived from the newest file under `dashboard/`, so any edit busts browser caches without hand-bumped numbers.
+version derived from the newest file among `index.html` and `app/*`, so any edit busts browser caches without
+hand-bumped numbers.
 """
 
+from contextlib import suppress
 from pathlib import Path
 
 _PLACEHOLDER = "__V__"
 
 
 def asset_version(dashboard: Path) -> str:
-    """Hex of the newest mtime under the dashboard folder (index.html + app/*); empty when the folder is missing."""
+    """Hex of the newest mtime (ns) among index.html and app/*; empty when the folder is missing."""
+    # ponytail: one version for every asset, mtime-based (re-busts all on deploy) — per-file content hashes if the
+    # re-download cost or replica disagreement ever matters
     files = [dashboard / "index.html", *(dashboard / "app").glob("*")] if dashboard.is_dir() else []
-    mtimes = [int(f.stat().st_mtime) for f in files if f.is_file()]
+    mtimes = []
+    for f in files:
+        with suppress(OSError):  # editor temp files can vanish between glob and stat
+            mtimes.append(f.stat().st_mtime_ns)
     return format(max(mtimes), "x") if mtimes else ""
 
 

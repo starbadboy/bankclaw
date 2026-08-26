@@ -870,24 +870,25 @@ async def health() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # SPA static file serving (must be last)
 # ---------------------------------------------------------------------------
-_DASHBOARD = Path(__file__).parent.parent / "dashboard"
+_DASHBOARD = (Path(__file__).parent.parent / "dashboard").resolve()
+_INDEX_HEADERS = {"Cache-Control": "no-cache"}  # revalidate the shell every time; the ?v= assets cache freely
 
 
 @app.get("/")
 async def serve_root() -> Response:
     html = render_index(_DASHBOARD)
     if html is not None:
-        return HTMLResponse(html)
+        return HTMLResponse(html, headers=_INDEX_HEADERS)
     return JSONResponse({"status": "api-only"})
 
 
 @app.get("/{path:path}")
 async def serve_spa(path: str) -> Response:
     # Serve static assets directly; everything else falls back to index.html
-    asset = _DASHBOARD / path
-    if asset.exists() and asset.is_file():
+    asset = (_DASHBOARD / path).resolve()
+    if asset.is_relative_to(_DASHBOARD) and asset.is_file():  # `path` is URL-decoded; keep `..` inside the dashboard
         return FileResponse(str(asset))
     html = render_index(_DASHBOARD)
     if html is not None:
-        return HTMLResponse(html)
+        return HTMLResponse(html, headers=_INDEX_HEADERS)
     raise HTTPException(status_code=404)
