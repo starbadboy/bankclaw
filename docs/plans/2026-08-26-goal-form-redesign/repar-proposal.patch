@@ -1,0 +1,40 @@
+diff -ru a/plugins/repar/skills/spec-driven-development/SKILL.md b/plugins/repar/skills/spec-driven-development/SKILL.md
+--- a/plugins/repar/skills/spec-driven-development/SKILL.md	2026-08-26 13:08:08
++++ b/plugins/repar/skills/spec-driven-development/SKILL.md	2026-08-26 13:08:08
+@@ -81,6 +81,7 @@
+ 1. Read `../grilling/SKILL.md` **this session** — following it from memory does not count; skills evolve, and a run that has not read the file has not run Phase 0. Follow it to exhaustion: work the decision tree in frontier rounds (each round asks every currently-askable question, with a recommended answer each) until every branch terminates in a decision, a confirmed assumption, or an out-of-scope marker. **Do not cap the question or round count.**
+ 2. Create the feature folder `docs/plans/YYYY-MM-DD-{summary}/` and save the Intent block as `intent.md` — it is Phase 0's deliverable, and the alignment gate is its sign-off. Requirements changes later reopen this gate and edit this file; they never get silently absorbed downstream.
+ 3. **STOP — alignment gate.** Present the Intent block and wait for explicit confirmation before Phase 1. Do not proceed on an unconfirmed Intent.
++4. **Re-check the tier once the Intent is confirmed.** Grilling exists to close decision branches — so the "no open decision" condition of the Small-Change Tier is usually *only* knowable here, not at the start. If the confirmed Intent describes work under ~150 changed lines in one layer, switch to the Small-Change Tier now: keep `intent.md` (it is the record of the decisions), skip `spec.md`, and shrink `plan.md` to the ladder table plus a Progress Log. Say so in one line. (Observed: a labelled-form restyle ran the full six stages — 290 lines of documents for 170 lines of code — because the tier was judged before the interview closed the branches.)
+ 
+ ## Phase 1: Thorough Research and Discovery
+ 
+@@ -335,7 +336,7 @@
+ 
+ **Syntax gate at every GREEN**: source-assertion and regex tests do not verify syntax — a structurally broken file can pass them. After each GREEN, run the project's compile/build/syntax check for the layer touched (e.g. esbuild for JSX, `bash -n`, `python -m py_compile`). If the project has none, establish the smallest one and record it in the project's `CLAUDE.md` Commands section.
+ 
+-**UI feedback loop**: when the change is user-facing UI, tests and syntax checks are not "done" — the change must be seen running. First confirm the running server serves the edited code (a dev server started without a reload flag keeps serving old backend code — restart it after every backend edit; static files are usually fresh). Exercise the UI on a **throwaway account with data seeded through the app's own API**, never the user's real data, and add a `cleanup` row to the plan's Progress Log the moment you seed — it is closed only when the seeded rows (and any caches they created) are deleted. Then drive the app with the available browser tooling (read `../agent-browser/SKILL.md`, or use the environment's browser skill) and capture a screenshot of **each changed view**; the screenshots are evidence and belong in the Progress Log alongside the test output. Two to three look-adjust rounds are normal. If no browser tooling can reach the app, say so explicitly and hand the user a click-through checklist naming each view to verify — an unverified view is listed as unverified, never assumed.
++**UI feedback loop**: when the change is user-facing UI, tests and syntax checks are not "done" — the change must be seen running. List every changed view **and every branch of it** (each kind, each state) as a checklist in the plan; a fix pass re-runs the whole checklist, never the subset that comes to mind. (Observed: a fix pass re-checked two of three goal kinds; the third crashed on first render and only the fix-pass verifier caught it.) First confirm the running server serves the edited code (a dev server started without a reload flag keeps serving old backend code — restart it after every backend edit; static files are usually fresh). Exercise the UI on a **throwaway account with data seeded through the app's own API**, never the user's real data, and add a `cleanup` row to the plan's Progress Log the moment you seed — it is closed only when the seeded rows (and any caches they created) are deleted. Then drive the app with the available browser tooling (read `../agent-browser/SKILL.md`, or use the environment's browser skill) and capture a screenshot of **each changed view**; the screenshots are evidence and belong in the Progress Log alongside the test output. Two to three look-adjust rounds are normal. If no browser tooling can reach the app, say so explicitly and hand the user a click-through checklist naming each view to verify — an unverified view is listed as unverified, never assumed.
+ 
+ **After completing Path B implementation, proceed directly to Phase 6 (Verification).**
+ 
+@@ -435,6 +436,7 @@
+ **Tracking**:
+ - `plan.md` = single source of truth during implementation; update immediately after each component
+ - **Progress Log rows are one line each** (`| date | task | status | 3–8 words + commit sha |`). Evidence — test summaries, screenshot names, review findings, declined items — goes into a `## Evidence` section below the table, one `###` heading per task. A table nobody can scan is not a record.
++- **Evidence records stable facts only**: commit SHAs, test counts, screenshot names, review verdicts. Never narrate values a later commit will change (cache-buster numbers, line counts, prop names) — they drift, and the Spec axis then spends a finding on the drift instead of on the product.
+ - `intent.md` and `spec.md` are frozen once gated — a requirements change reopens the earlier gate and edits the earlier file (an `intent.md`/`spec.md` commit dated after `plan.md` began IS the rework signal, on the record)
+ - Older flat plan files (`docs/plans/*.md`) remain valid history; do not migrate them
+ - Mark `plan.md` status "Complete" when all work is done
+diff -ru a/plugins/repar/skills/spec-driven-development/references/review-policy.md b/plugins/repar/skills/spec-driven-development/references/review-policy.md
+--- a/plugins/repar/skills/spec-driven-development/references/review-policy.md	2026-08-26 13:08:08
++++ b/plugins/repar/skills/spec-driven-development/references/review-policy.md	2026-08-26 13:08:08
+@@ -6,7 +6,7 @@
+ 
+ Each axis runs in its own sub-agent context so findings from one axis do not pollute another.
+ 
+-**Size threshold:** diffs under ~30 changed lines get ONE reviewer sub-agent running all three passes sequentially in a single context; larger diffs get three parallel sub-agents. Axes, severities, and labels are identical either way — only the parallelism scales. (Data basis: parallel isolation paid for itself on feature-sized diffs and found nothing extra on tiny ones.)
++**Size threshold:** diffs under ~30 changed lines get ONE reviewer sub-agent running all three passes sequentially in a single context. Diffs under ~200 changed lines **in one layer** (a UI restyle, a repository-only change) also get ONE reviewer — on that size the axes are not independent: the same duplicated prop or CSS rule arrives three times under three labels. Three parallel sub-agents are for diffs that cross layers or exceed ~200 lines. Axes, severities, and labels are identical either way — only the parallelism scales. (Data basis: parallel isolation paid for itself on feature-sized diffs and found nothing extra on tiny ones.)
+ 
+ ### Pass 1: Standards
+ 

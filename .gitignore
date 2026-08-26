@@ -18,3 +18,6 @@ __pycache__/
 *.pyc
 *.pyo
 .gstack/
+
+# node dev deps for dashboard tests (React itself is loaded from a CDN at runtime)
+node_modules/

@@ -24,7 +24,9 @@ uv run pytest tests/test_app.py
 # Run a single test
 uv run pytest tests/test_app.py::test_name
 
-# Dashboard JS tests + JSX syntax check (regex tests don't catch broken JSX)
+# Dashboard JS tests + JSX syntax check. `npm install` once (dev-only react/react-dom/esbuild; the app itself loads React from a CDN).
+# page-goals.render.test.js actually renders the goals components in node — source-regex tests cannot fail on runtime errors.
+npm install
 for f in dashboard/app/*.test.js; do node --test "$f"; done
 npx esbuild dashboard/app/*.jsx --loader:.jsx=jsx --outdir=/tmp/jsxcheck
 
@@ -157,3 +159,6 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/
 - Never `importlib.reload()` a module inside a `patch()` of one of its names: the reload re-binds the real object behind the patch. `tests/test_db.py` did this with `webapp.db.MongoClient`, created a real `localhost:27017` client and left it in the `_client` singleton — 17 unrelated tests then each burned a 30 s `ServerSelectionTimeoutError` (looked like "the suite needs Mongo"; it didn't). Reset singletons with `monkeypatch.setattr(module, "_client", None)` instead. (2026-08-25)
 - Map only your own exception types to client-facing HTTP statuses/messages. Broad stdlib catches leak or mislabel: `KeyError` is a `LookupError` (market-history route echoed internal keys as 502 detail), `json.JSONDecodeError` is a `ValueError` (goal-suggestions route reported a malformed model reply as "API key not configured" 503). Define `XxxError` in the module and catch that; everything else is a generic 502 with a logged warning. Caught by review twice on 2026-08-25/26.
 - Record plan departures at the commit that makes them (extra field, extra cache-buster bump, moved hint), not at review time. Both goals runs (2026-08-26) had the Spec axis discover unrecorded departures — the fix is a one-line Progress Log note per commit, cheaper than a review finding. Also: never build a plan.md edit from a chained `str.replace` you have not printed — one misfired expression duplicated the whole document.
+- After a fix pass, re-exercise every changed view and every branch of it (each goal kind, each state), not the subset you happen to remember — fix #1 of the goal-form redesign crashed the debt path while the two kinds I re-checked were fine; the fix-pass verifier caught it, the UI loop should have. (2026-08-26)
+- Plan evidence records stable facts only: commit SHAs, test counts, screenshot names. Never narrate values a later commit changes (cache-buster numbers drifted four times in one session and became a review finding). (2026-08-26)
+- Dashboard cache-busting is automatic: `index.html` uses `?v=__V__` and `webapp/dashboard_assets.py` injects a version from the newest file mtime under `dashboard/`. Do not hand-bump `?v=N`. Static files are read from disk per request, but the *Python* side is served by a uvicorn process without `--reload` when started by hand — restart it after backend edits. (2026-08-26)

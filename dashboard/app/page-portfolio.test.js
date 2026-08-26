@@ -153,7 +153,7 @@ test("goals page has a hero, goal rows with projections, and the net-worth hero 
   assert.match(goalsSource, /not enough history/i);
   assert.match(source, /Next goal/);
   assert.match(source, /no date yet/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=\d+"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=__V__"/);
   const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
   assert.match(css, /\.pf-goal-card/);
   assert.match(css, /\.pf-goal-hero/);
@@ -186,7 +186,7 @@ test("goal form uses the labelled add-grid idiom and previews the draft through 
   assert.match(goalsSource, /baseline set when you save/i);
   assert.match(goalsSource, /GoalForm[^]*goalCtx=\{goalCtx\}/); // GoalsCard passes the live context into the form
   assert.match(source, /<GoalsCard[^]*goalCtx=\{goalCtx\}/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=(?!1")\d+"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=__V__"/); // server injects the asset version (webapp/dashboard_assets.py)
   assert.match(fs.readFileSync(path.join(__dirname, "styles.css"), "utf8"), /\.pf-goal-form \.pf-add-grid/);
 });
 

@@ -16,15 +16,16 @@ if not os.getenv("MONGODB_URL"):
     load_dotenv(find_dotenv())
 
 import pandas as pd
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
 from webapp.auth import create_auth_token, verify_auth_token
 from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
 from webapp.market_data import RANGES, TICKER_PATTERN, MarketDataError, get_market_history
+from webapp.dashboard_assets import render_index
 
 # optional MongoDB — gracefully degrade when not configured
 try:
@@ -873,20 +874,20 @@ _DASHBOARD = Path(__file__).parent.parent / "dashboard"
 
 
 @app.get("/")
-async def serve_root() -> FileResponse:
-    idx = _DASHBOARD / "index.html"
-    if idx.exists():
-        return FileResponse(str(idx))
+async def serve_root() -> Response:
+    html = render_index(_DASHBOARD)
+    if html is not None:
+        return HTMLResponse(html)
     return JSONResponse({"status": "api-only"})
 
 
 @app.get("/{path:path}")
-async def serve_spa(path: str) -> FileResponse:
+async def serve_spa(path: str) -> Response:
     # Serve static assets directly; everything else falls back to index.html
     asset = _DASHBOARD / path
     if asset.exists() and asset.is_file():
         return FileResponse(str(asset))
-    idx = _DASHBOARD / "index.html"
-    if idx.exists():
-        return FileResponse(str(idx))
+    html = render_index(_DASHBOARD)
+    if html is not None:
+        return HTMLResponse(html)
     raise HTTPException(status_code=404)
