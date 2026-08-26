@@ -28,8 +28,15 @@ _LLM_TIMEOUT_SECONDS = 180  # DeepSeek structured output has been observed at ~1
 _GEN_LOCK = threading.Lock()
 
 
+_GEN_LOCK_WAIT_SECONDS = 5  # don't pin an executor thread behind a 180 s generation; tell the client to retry
+
+
 class AdvisorNotConfigured(ValueError):
     """Raised when a generation is needed but DEEPSEEK_API_KEY is not set."""
+
+
+class AdvisorBusy(RuntimeError):
+    """Raised when another generation is already running; the client should retry shortly."""
 
 
 _BUILTIN_KIND_NAMES = {
@@ -113,7 +120,7 @@ def _goal_target(goal: dict) -> float:
         return float(goal.get("target_amount") or 0.0)
     if kind == "allocation":
         return float(goal.get("target_pct") or 0.0)
-    return 0
+    return 0.0
 
 
 def build_goal_aggregate(
@@ -295,12 +302,16 @@ def get_suggestions(
 
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise AdvisorNotConfigured("DEEPSEEK_API_KEY not set")
-    with _GEN_LOCK:  # late arrivals read what the first generation saved
+    if not _GEN_LOCK.acquire(timeout=_GEN_LOCK_WAIT_SECONDS):
+        raise AdvisorBusy("Suggestions are being generated right now — try again in a moment")
+    try:  # late arrivals read what the first generation saved
         if not force_refresh:
             fresh = coll.find_one({"user_email": user_email}, {"_id": 0})
             if fresh:
                 return _from_doc(fresh)
         return _generate(user_email, coll, build_portfolio())
+    finally:
+        _GEN_LOCK.release()
 
 
 def _from_doc(doc: dict) -> dict:

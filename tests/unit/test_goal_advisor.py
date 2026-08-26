@@ -4,7 +4,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from webapp import goal_advisor
-from webapp.goal_advisor import AdvisorNotConfigured, build_goal_aggregate, get_suggestions, normalize_suggestions
+from webapp.goal_advisor import (
+    AdvisorBusy,
+    AdvisorNotConfigured,
+    build_goal_aggregate,
+    get_suggestions,
+    normalize_suggestions,
+)
 
 ASSETS = [
     {"id": "a1", "name": "DBS Multiplier", "kind": "cash", "value": 54000.0, "ticker": None, "units": None},
@@ -269,7 +275,12 @@ def test_concurrent_generation_for_one_user_calls_the_model_once(monkeypatch):
 
 def test_cached_reads_never_build_the_portfolio_snapshot():
     db, coll = _advisor_db()
-    coll.find_one.return_value = {"suggestions": [], "snapshot": {"net": 1, "goal_count": 0}, "generated_at": "x", "dismissed_ids": []}
+    coll.find_one.return_value = {
+        "suggestions": [],
+        "snapshot": {"net": 1, "goal_count": 0},
+        "generated_at": "x",
+        "dismissed_ids": [],
+    }
     builder = MagicMock(return_value=PORTFOLIO)
     with patch("webapp.goal_advisor.get_db", return_value=db):
         get_suggestions("owner@example.com", builder)
@@ -280,7 +291,19 @@ def test_cached_reads_never_build_the_portfolio_snapshot():
 def test_llm_client_is_created_with_a_timeout(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     fake_openai = MagicMock()
-    fake_openai.return_value.chat.completions.create.return_value.choices = [MagicMock(message=MagicMock(content='{"suggestions": []}'))]
+    fake_openai.return_value.chat.completions.create.return_value.choices = [
+        MagicMock(message=MagicMock(content='{"suggestions": []}'))
+    ]
     with patch.dict("sys.modules", {"openai": MagicMock(OpenAI=fake_openai)}):
         goal_advisor._call_llm({"net_worth": 1})
     assert fake_openai.call_args.kwargs["timeout"] >= 60
+
+
+def test_generation_does_not_queue_behind_a_held_lock(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    monkeypatch.setattr(goal_advisor, "_GEN_LOCK_WAIT_SECONDS", 0.05)
+    db, coll = _advisor_db()
+    coll.find_one.return_value = None
+    with patch("webapp.goal_advisor.get_db", return_value=db), goal_advisor._GEN_LOCK:
+        with pytest.raises(AdvisorBusy):
+            get_suggestions("owner@example.com", lambda: PORTFOLIO)

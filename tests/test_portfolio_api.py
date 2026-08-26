@@ -25,7 +25,7 @@ from webapp.api import (
     remove_portfolio_goal,
     remove_portfolio_valuation,
 )
-from webapp.goal_advisor import AdvisorNotConfigured
+from webapp.goal_advisor import AdvisorBusy, AdvisorNotConfigured
 from webapp.market_data import MarketDataError
 
 
@@ -289,8 +289,17 @@ def test_market_history_hides_internal_errors_but_keeps_feed_messages():
 
 def _suggestion_portfolio_patches():
     return (
-        patch("webapp.api.list_portfolio", return_value={"assets": [{"id": "a1", "name": "X", "kind": "cash", "value": 5.0}], "debts": [{"id": "d1", "name": "L", "kind": "loan", "value": 2.0}]}),
-        patch("webapp.api.list_valuations", side_effect=lambda user, item_type, item_id: [{"as_of_date": "2026-08-01", "value": 1.0}]),
+        patch(
+            "webapp.api.list_portfolio",
+            return_value={
+                "assets": [{"id": "a1", "name": "X", "kind": "cash", "value": 5.0}],
+                "debts": [{"id": "d1", "name": "L", "kind": "loan", "value": 2.0}],
+            },
+        ),
+        patch(
+            "webapp.api.list_valuations",
+            side_effect=lambda user, item_type, item_id: [{"as_of_date": "2026-08-01", "value": 1.0}],
+        ),
         patch("webapp.api.list_goals", return_value=[]),
         patch("webapp.api.list_asset_types", return_value=[{"id": "custom_1", "name": "CPF", "color": "#000000"}]),
     )
@@ -300,7 +309,9 @@ def test_goal_suggestions_route_builds_the_snapshot_server_side_and_passes_flags
     result = {"suggestions": [], "snapshot": {"net": 3.0, "goal_count": 0}, "generated_at": "now", "from_cache": False}
     p1, p2, p3, p4 = _suggestion_portfolio_patches()
     with p1, p2, p3, p4, patch("webapp.goal_advisor.get_suggestions", return_value=result) as advisor:
-        out = asyncio.run(get_goal_suggestions(_JsonRequest({"force_refresh": True, "dismiss": "abc"}), user="owner@example.com"))
+        out = asyncio.run(
+            get_goal_suggestions(_JsonRequest({"force_refresh": True, "dismiss": "abc"}), user="owner@example.com")
+        )
         portfolio = advisor.call_args.args[1]()  # lazy builder: only called when generating (inside the patches)
 
     assert out == result
@@ -317,19 +328,33 @@ def test_goal_suggestions_route_rejects_non_string_dismiss_and_ignores_empty():
     with p1, p2, p3, p4, patch("webapp.goal_advisor.get_suggestions", return_value=result) as advisor:
         with pytest.raises(HTTPException) as bad:
             asyncio.run(get_goal_suggestions(_JsonRequest({"dismiss": {"$each": ["a"]}}), user="owner@example.com"))
+        with pytest.raises(HTTPException) as too_long:
+            asyncio.run(get_goal_suggestions(_JsonRequest({"dismiss": "x" * 65}), user="owner@example.com"))
         asyncio.run(get_goal_suggestions(_JsonRequest({"dismiss": ""}), user="owner@example.com"))
-    assert bad.value.status_code == 400
+    assert bad.value.status_code == 400 and too_long.value.status_code == 400
     assert advisor.call_args.kwargs["dismiss"] is None
 
 
 def test_goal_suggestions_route_maps_missing_key_to_503_and_failures_to_502():
     p1, p2, p3, p4 = _suggestion_portfolio_patches()
-    with p1, p2, p3, p4, patch("webapp.goal_advisor.get_suggestions", side_effect=AdvisorNotConfigured("DEEPSEEK_API_KEY not set")):
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch("webapp.goal_advisor.get_suggestions", side_effect=AdvisorNotConfigured("DEEPSEEK_API_KEY not set")),
+    ):
         with pytest.raises(HTTPException) as no_key:
             asyncio.run(get_goal_suggestions(_JsonRequest({}), user="owner@example.com"))
     assert no_key.value.status_code == 503 and "DEEPSEEK_API_KEY" in no_key.value.detail
     p1, p2, p3, p4 = _suggestion_portfolio_patches()
-    with p1, p2, p3, p4, patch("webapp.goal_advisor.get_suggestions", side_effect=ValueError("Expecting value: line 1")):
+    with (
+        p1,
+        p2,
+        p3,
+        p4,
+        patch("webapp.goal_advisor.get_suggestions", side_effect=ValueError("Expecting value: line 1")),
+    ):
         with pytest.raises(HTTPException) as bad_json:
             asyncio.run(get_goal_suggestions(_JsonRequest({}), user="owner@example.com"))
     assert bad_json.value.status_code == 502  # a ValueError from the model/JSON path is not "not configured"
@@ -344,5 +369,17 @@ def test_goal_suggestions_route_maps_missing_key_to_503_and_failures_to_502():
 def test_goal_route_returns_400_for_invalid_kind_payloads():
     with patch("webapp.api.create_goal", side_effect=ValueError("Unknown goal kind 'lottery'")):
         with pytest.raises(HTTPException) as exc:
-            asyncio.run(add_portfolio_goal(_JsonRequest({"kind": "lottery", "name": "x", "target_amount": 1}), user="owner@example.com"))
+            asyncio.run(
+                add_portfolio_goal(
+                    _JsonRequest({"kind": "lottery", "name": "x", "target_amount": 1}), user="owner@example.com"
+                )
+            )
     assert exc.value.status_code == 400 and "lottery" in exc.value.detail
+
+
+def test_goal_suggestions_route_reports_busy_as_429():
+    p1, p2, p3, p4 = _suggestion_portfolio_patches()
+    with p1, p2, p3, p4, patch("webapp.goal_advisor.get_suggestions", side_effect=AdvisorBusy("busy")):
+        with pytest.raises(HTTPException) as busy:
+            asyncio.run(get_goal_suggestions(_JsonRequest({}), user="owner@example.com"))
+    assert busy.value.status_code == 429
