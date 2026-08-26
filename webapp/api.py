@@ -886,11 +886,10 @@ async def serve_root() -> Response:
 @app.get("/{path:path}")
 async def serve_spa(path: str) -> Response:
     # Serve static assets directly; everything else falls back to index.html
-    asset = _DASHBOARD  # a directory → not a file → SPA fallback
-    with suppress(ValueError):  # NUL byte in the decoded URL path
+    with suppress(ValueError, OSError):  # NUL byte / over-long name in the decoded URL path → fall back to the shell
         asset = (_DASHBOARD / path).resolve()
-    if asset.is_relative_to(_DASHBOARD) and asset.is_file():  # `path` is URL-decoded; keep `..` inside the dashboard
-        return FileResponse(str(asset))
+        if asset.is_relative_to(_DASHBOARD) and asset.is_file():  # `path` is URL-decoded; keep `..` inside the dashboard
+            return FileResponse(str(asset))
     html = render_index(_DASHBOARD)
     if html is not None:
         return HTMLResponse(html, headers=_INDEX_HEADERS)

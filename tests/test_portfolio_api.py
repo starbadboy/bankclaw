@@ -399,7 +399,19 @@ def test_root_serves_index_with_the_asset_version_substituted():
     assert resp.headers["cache-control"] == "no-cache"
 
 
-@pytest.mark.parametrize("path", ["../.env", "../webapp/api.py", "app/../../.env", "app/" + "../" * 12 + "etc/passwd", "a\x00b.js", "..\x00/.env"])
+_HOSTILE_PATHS = [
+    "../.env",
+    "../webapp/api.py",
+    "app/../../.env",
+    "app/" + "../" * 12 + "etc/passwd",
+    "a\x00b.js",  # NUL byte → ValueError from resolve()
+    "..\x00/.env",
+    "x" * 300 + ".js",  # over NAME_MAX → OSError from is_file()
+    "app/" + "x" * 300 + ".js",
+]
+
+
+@pytest.mark.parametrize("path", _HOSTILE_PATHS)
 def test_spa_fallback_never_serves_files_outside_the_dashboard(path):
     resp = asyncio.run(serve_spa(path))
     # anything that is not a dashboard asset falls back to the versioned index.html — never the escaped file
