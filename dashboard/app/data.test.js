@@ -344,3 +344,77 @@ test("holding chart data carries each point's date for hover tooltips", () => {
   const points = [{ date: "2026-08-03", price: 1.5, value: 150 }, { date: "2026-08-04", price: 1.6, value: 160 }];
   assert.deepEqual(buildHoldingChartData(points, "value").map((d) => d.date), ["2026-08-03", "2026-08-04"]);
 });
+
+test("goal progress: net worth (legacy and explicit), debt payoff from baseline, allocation band", () => {
+  const ctx = {
+    net: 50000,
+    assetsTotal: 80000,
+    allocationByKind: { equities: 24000, cash: 56000 },
+    debtsById: { d1: { id: "d1", name: "Car loan", value: 6000 } },
+  };
+  const legacy = computeGoalProgress({ name: "100k", target_amount: 100000 }, ctx);
+  assert.equal(legacy.progress, 0.5);
+  assert.equal(legacy.done, false);
+  assert.equal(computeGoalProgress({ kind: "net_worth", target_amount: 40000 }, ctx).done, true);
+
+  const debt = computeGoalProgress({ kind: "debt_payoff", debt_id: "d1", baseline: 18000 }, ctx);
+  assert.equal(debt.progress, 2 / 3);
+  assert.equal(debt.current, 6000);
+  assert.equal(debt.done, false);
+  assert.equal(computeGoalProgress({ kind: "debt_payoff", debt_id: "d1", baseline: 18000 }, { ...ctx, debtsById: { d1: { value: 0 } } }).done, true);
+  assert.equal(computeGoalProgress({ kind: "debt_payoff", debt_id: "gone", baseline: 18000 }, ctx).missing, true);
+
+  const alloc = computeGoalProgress({ kind: "allocation", asset_kind: "equities", target_pct: 40 }, ctx);
+  assert.equal(alloc.current, 30);             // 24k of 80k
+  assert.equal(alloc.progress, 0.75);          // 1 - |30-40|/40
+  assert.equal(alloc.done, false);
+  assert.equal(computeGoalProgress({ kind: "allocation", asset_kind: "equities", target_pct: 31 }, ctx).done, true); // within ±2pp
+  assert.equal(computeGoalProgress({ kind: "allocation", asset_kind: "crypto", target_pct: 10 }, ctx).current, 0);
+  assert.equal(computeGoalProgress({ kind: "allocation", asset_kind: "equities", target_pct: 10 }, ctx).progress, 0); // floored
+});
+
+test("projectGoal: rising net worth gives an ETA and monthly pace; thin or wrong-way history does not", () => {
+  const points = [
+    { date: "2026-02-01", value: 100000 },
+    { date: "2026-05-01", value: 106000 },
+    { date: "2026-08-01", value: 112000 },
+  ];
+  const goal = { kind: "net_worth", target_amount: 124000, target_date: "2027-08-01" };
+  const p = projectGoal(goal, points, { now: "2026-08-01", current: 112000 });
+  assert.equal(p.reason, "ok");
+  assert.match(p.eta, /^2027-0[12]-/);                 // ~+12k at ~2k/month → about 6 months out
+  assert.ok(Math.abs(p.monthlyNeeded - 1000) < 10);     // 12k over 12 months
+
+  assert.equal(projectGoal(goal, points.slice(0, 1), { now: "2026-08-01", current: 112000 }).reason, "not_enough_history");
+  assert.equal(projectGoal(goal, [{ date: "2026-08-01", value: 1 }, { date: "2026-08-10", value: 2 }], { now: "2026-08-10", current: 2 }).reason, "not_enough_history");
+  assert.equal(projectGoal(goal, [...points].map((x, i) => ({ ...x, value: 120000 - i * 1000 })), { now: "2026-08-01", current: 118000 }).reason, "not_on_track");
+  assert.equal(projectGoal({ ...goal, target_date: null }, points, { now: "2026-08-01", current: 112000 }).monthlyNeeded, null);
+  assert.equal(projectGoal(goal, points, { now: "2026-08-01", current: 130000 }).reason, "done");
+});
+
+test("projectGoal: debt payoff projects from a falling balance; allocation has no projection", () => {
+  const balances = [
+    { date: "2026-01-01", value: 12000 },
+    { date: "2026-04-01", value: 9000 },
+    { date: "2026-07-01", value: 6000 },
+  ];
+  const p = projectGoal({ kind: "debt_payoff", baseline: 12000, target_date: "2026-12-01" }, balances, { now: "2026-07-01", current: 6000 });
+  assert.equal(p.reason, "ok");
+  assert.match(p.eta, /^2026-12-(2|3)|^2027-01-0/);      // 6k at ~33/day → ~181 days after Jul 1
+  assert.ok(Math.abs(p.monthlyNeeded - 1200) < 20);     // 6k over 5 months
+  assert.equal(projectGoal({ kind: "allocation", target_pct: 30 }, balances, { now: "2026-07-01", current: 20 }).reason, "n/a");
+});
+
+test("pickNearestGoal prefers the unfinished goal with the highest progress, ties by earliest date", () => {
+  const goals = [{ id: "a", target_date: null }, { id: "b", target_date: "2027-01-01" }, { id: "c", target_date: "2026-12-01" }, { id: "d" }];
+  const results = { a: { progress: 1, done: true }, b: { progress: 0.6, done: false }, c: { progress: 0.6, done: false }, d: { progress: 0.2, done: false } };
+  assert.equal(pickNearestGoal(goals, results).id, "c");
+  assert.equal(pickNearestGoal([goals[0]], results), null);
+  assert.equal(pickNearestGoal([], results), null);
+});
+
+test("pickNearestGoal comparator is stable on exact ties", () => {
+  const goals = [{ id: "x", target_date: "2027-01-01" }, { id: "y", target_date: "2027-01-01" }];
+  const results = { x: { progress: 0.5, done: false }, y: { progress: 0.5, done: false } };
+  assert.equal(pickNearestGoal(goals, results).id, pickNearestGoal([...goals].reverse(), results).id);
+});

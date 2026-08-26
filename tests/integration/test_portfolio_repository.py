@@ -326,8 +326,13 @@ def test_goal_crud_is_user_scoped():
     assert created == {
         "id": str(goal_id),
         "name": "First 100k",
+        "kind": "net_worth",
         "target_amount": 100000.0,
         "target_date": None,
+        "debt_id": None,
+        "baseline": None,
+        "asset_kind": None,
+        "target_pct": None,
     }
     assert listed == [created]
     assert updated["target_amount"] == 120000.0
@@ -418,3 +423,60 @@ def test_update_asset_uppercases_ticker_and_rejects_unsafe_symbols():
 
     set_doc = collections["portfolio_assets"].find_one_and_update.call_args.args[1]["$set"]
     assert set_doc["ticker"] == "D05.SI"
+
+
+def test_debt_payoff_goal_captures_baseline_from_the_debt():
+    db, collections = _portfolio_db()
+    debt_id, goal_id = ObjectId(), ObjectId()
+    collections["portfolio_debts"].find_one.return_value = {"_id": debt_id, "user_email": "owner@example.com", "name": "Car loan", "value": 18000.0}
+    collections["portfolio_goals"].insert_one.return_value.inserted_id = goal_id
+
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        created = create_goal("owner@example.com", {"kind": "debt_payoff", "debt_id": str(debt_id), "target_date": "2027-06-30"})
+
+    assert created["kind"] == "debt_payoff"
+    assert created["debt_id"] == str(debt_id)
+    assert created["baseline"] == 18000.0
+    assert created["name"] == "Pay off Car loan"  # default name when none given
+    assert created["target_amount"] is None
+    collections["portfolio_debts"].find_one.assert_called_once_with({"_id": debt_id, "user_email": "owner@example.com"})
+
+
+def test_debt_payoff_goal_rejects_unknown_debt():
+    db, collections = _portfolio_db()
+    collections["portfolio_debts"].find_one.return_value = None
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        with pytest.raises(ValueError, match="Debt not found"):
+            create_goal("owner@example.com", {"kind": "debt_payoff", "debt_id": str(ObjectId())})
+        with pytest.raises(ValueError, match="debt_id is required"):
+            create_goal("owner@example.com", {"kind": "debt_payoff"})
+
+
+def test_allocation_goal_validates_class_and_target_pct():
+    db, collections = _portfolio_db()
+    collections["portfolio_goals"].insert_one.return_value.inserted_id = ObjectId()
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        created = create_goal("owner@example.com", {"kind": "allocation", "asset_kind": "equities", "target_pct": "30"})
+        with pytest.raises(ValueError, match="target_pct must be between 1 and 100"):
+            create_goal("owner@example.com", {"kind": "allocation", "asset_kind": "equities", "target_pct": 0})
+        with pytest.raises(ValueError, match="asset_kind is required"):
+            create_goal("owner@example.com", {"kind": "allocation", "target_pct": 30})
+        with pytest.raises(ValueError, match="Unknown goal kind"):
+            create_goal("owner@example.com", {"kind": "lottery", "name": "x", "target_amount": 1})
+
+    assert created["kind"] == "allocation"
+    assert created["asset_kind"] == "equities"
+    assert created["target_pct"] == 30.0
+    assert created["name"] == "Equities at 30%"
+
+
+def test_goal_kind_is_immutable_and_legacy_docs_default_to_net_worth():
+    db, collections = _portfolio_db()
+    goal_id = ObjectId()
+    goals = collections["portfolio_goals"]
+    goals.find.return_value = [{"_id": goal_id, "user_email": "owner@example.com", "name": "Legacy", "target_amount": 5.0, "target_date": None}]
+    with patch("webapp.portfolio_repository.get_db", return_value=db):
+        listed = list_goals("owner@example.com")
+        with pytest.raises(ValueError, match="kind cannot be changed"):
+            update_goal("owner@example.com", str(goal_id), {"kind": "allocation"})
+    assert listed[0]["kind"] == "net_worth"

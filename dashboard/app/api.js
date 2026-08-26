@@ -415,6 +415,20 @@ async function apiUpdatePortfolioDebt(id, payload) {
 async function apiDeletePortfolioDebt(id) {
   return _portfolioMutate(`/api/portfolio/debts/${encodeURIComponent(id)}`, "DELETE");
 }
+async function apiGoalSuggestions({ force_refresh = false, dismiss = null } = {}) {
+  const res = await _fetch("/api/portfolio/goals/suggestions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force_refresh, dismiss }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const error = new Error(err.detail || "Failed to load suggestions");
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+}
 async function apiFetchPortfolioGoals() {
   const res = await _fetch("/api/portfolio/goals");
   if (!res.ok) {
@@ -493,7 +507,7 @@ Object.assign(window, {
   apiCreatePortfolioAsset, apiUpdatePortfolioAsset, apiDeletePortfolioAsset,
   apiCreatePortfolioDebt, apiUpdatePortfolioDebt, apiDeletePortfolioDebt,
   apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation, apiFetchAssetMarketHistory,
-  apiFetchPortfolioGoals, apiCreatePortfolioGoal, apiUpdatePortfolioGoal, apiDeletePortfolioGoal,
+  apiFetchPortfolioGoals, apiCreatePortfolioGoal, apiUpdatePortfolioGoal, apiDeletePortfolioGoal, apiGoalSuggestions,
   apiAiReview,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,

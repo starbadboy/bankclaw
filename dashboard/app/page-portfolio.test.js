@@ -4,6 +4,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const source = fs.readFileSync(path.join(__dirname, "page-portfolio.jsx"), "utf8");
+const goalsSource = fs.readFileSync(path.join(__dirname, "page-goals.jsx"), "utf8");
 
 test("portfolio page records values with an explicit date", () => {
   assert.match(source, /type="date"/);
@@ -45,17 +46,18 @@ test("portfolio table summaries total the visible assets and all debts", () => {
 });
 
 test("portfolio page manages net-worth goals through the API", () => {
-  assert.match(source, /function GoalsCard/);
+  assert.match(goalsSource, /function GoalsCard/);
   assert.match(source, /apiFetchPortfolioGoals/);
   assert.match(source, /apiCreatePortfolioGoal/);
   assert.match(source, /apiUpdatePortfolioGoal/);
   assert.match(source, /apiDeletePortfolioGoal/);
 });
 
-test("goal progress derives from net worth, capped, with computed done state", () => {
-  assert.match(source, /goal\.target_amount/);
-  assert.match(source, /Math\.min\(1,/);
-  assert.match(source, /net >= goal\.target_amount|goal\.target_amount <= .*net/);
+test("goal progress and done state come from the shared data helper, not inline math", () => {
+  assert.match(source, /computeGoalProgress\(g, goalCtx\)/);
+  assert.match(goalsSource, /result\.done/);
+  assert.doesNotMatch(goalsSource, /net \/ goal\.target_amount/);
+  assert.doesNotMatch(goalsSource, /computeGoalProgress\(/); // computed once, in PortfolioPage
 });
 
 test("dedicated goals page renders GoalsCard via the pf-goals sub", () => {
@@ -133,4 +135,40 @@ test("NetWorthChart shows a hover tooltip with the point's date and value", () =
   assert.match(chart, /onMouseLeave/);
   assert.match(chart, /hoverIdx/);
   assert.match(chart, /\{hovered\.date\} · S\$ \{fmtValue\(hovered\.value\)\}/);
+});
+
+test("goal form offers three kinds and rows compute progress through the data helper", () => {
+  assert.match(source, /computeGoalProgress\(/);
+  assert.match(goalsSource, /"debt_payoff"/);
+  assert.match(goalsSource, /"allocation"/);
+  assert.match(goalsSource, /Debt removed/);
+  assert.match(goalsSource, /aria-label="Goal kind"/);
+});
+
+test("goals page has a hero, goal rows with projections, and the net-worth hero names the next goal", () => {
+  assert.match(goalsSource, /function GoalsHero/);
+  assert.match(goalsSource, /function GoalRow/);
+  assert.match(source, /projectGoal\(/);
+  assert.match(source, /pickNearestGoal\(/);
+  assert.match(goalsSource, /not enough history/i);
+  assert.match(source, /Next goal/);
+  assert.match(source, /no date yet/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=\d+"/);
+  const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
+  assert.match(css, /\.pf-goal-card/);
+  assert.match(css, /\.pf-goal-hero/);
+});
+
+test("goals page renders an AI suggestions panel wired to the suggestions API", () => {
+  assert.match(goalsSource, /function GoalSuggestions/);
+  assert.match(goalsSource, /apiGoalSuggestions\(/);
+  assert.match(goalsSource, /Refresh suggestions/);
+  assert.match(goalsSource, /Dismiss/);
+  assert.match(goalsSource, /portfolio changed/i);
+  assert.match(goalsSource, /not configured/i);
+  assert.match(goalsSource, /DEEPSEEK_API_KEY/); // not-configured detection keys off the message, not just 503
+  assert.doesNotMatch(goalsSource, /SUGGESTION_KIND_TAG/);
+  const api = fs.readFileSync(path.join(__dirname, "api.js"), "utf8");
+  assert.match(api, /async function apiGoalSuggestions/);
+  assert.match(api, /\/api\/portfolio\/goals\/suggestions/);
 });

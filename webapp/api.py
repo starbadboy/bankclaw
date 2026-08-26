@@ -466,6 +466,48 @@ async def get_portfolio_goals(user: str = Depends(_current_user)) -> dict:
     return {"goals": list_goals(user)}
 
 
+@app.post("/api/portfolio/goals/suggestions")
+async def get_goal_suggestions(request: Request, user: str = Depends(_current_user)) -> dict:
+    """AI goal suggestions from portfolio aggregates. Cached per user; ``force_refresh`` / ``dismiss`` in the body."""
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — empty or non-JSON body means defaults
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    raw_dismiss = body.get("dismiss")
+    if raw_dismiss not in (None, "") and not (isinstance(raw_dismiss, str) and len(raw_dismiss) <= 64):
+        raise HTTPException(status_code=400, detail="dismiss must be a suggestion id")
+    from webapp.goal_advisor import AdvisorBusy, AdvisorNotConfigured, get_suggestions  # noqa: PLC0415 — lazy, like ai_coach
+
+    def build_portfolio() -> dict:  # only runs when a generation is needed
+        portfolio = list_portfolio(user)
+        histories = {
+            f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
+            for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
+            for item in items
+        }
+        return {
+            **portfolio,
+            "histories": histories,
+            "goals": list_goals(user),
+            "asset_kind_names": {t["id"]: t["name"] for t in list_asset_types(user)},
+        }
+
+    try:
+        return await asyncio.to_thread(
+            get_suggestions, user, build_portfolio, force_refresh=bool(body.get("force_refresh")), dismiss=raw_dismiss or None
+        )
+    except AdvisorNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AdvisorBusy as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("goal suggestions failed for %s: %r", user, exc)
+        raise HTTPException(status_code=502, detail="AI suggestions unavailable") from exc
+
+
 @app.post("/api/portfolio/goals")
 async def add_portfolio_goal(request: Request, user: str = Depends(_current_user)) -> dict:
     if not _MONGO:
