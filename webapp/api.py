@@ -466,6 +466,41 @@ async def get_portfolio_goals(user: str = Depends(_current_user)) -> dict:
     return {"goals": list_goals(user)}
 
 
+@app.post("/api/portfolio/goals/suggestions")
+async def get_goal_suggestions(request: Request, user: str = Depends(_current_user)) -> dict:
+    """AI goal suggestions from portfolio aggregates. Cached per user; ``force_refresh`` / ``dismiss`` in the body."""
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — empty or non-JSON body means defaults
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    from webapp.goal_advisor import get_suggestions  # noqa: PLC0415 — lazy, like ai_coach
+
+    portfolio = list_portfolio(user)
+    histories = {
+        f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
+        for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
+        for item in items
+    }
+    asset_kind_names = {
+        "cash": "Cash & savings", "equities": "Equities", "bonds": "Bonds",
+        "retirement": "Retirement", "property": "Property", "crypto": "Crypto",
+        **{t["id"]: t["name"] for t in list_asset_types(user)},
+    }
+    snapshot = {**portfolio, "histories": histories, "goals": list_goals(user), "asset_kind_names": asset_kind_names}
+    try:
+        return await asyncio.to_thread(
+            get_suggestions, user, snapshot, force_refresh=bool(body.get("force_refresh")), dismiss=body.get("dismiss") or None
+        )
+    except ValueError as exc:  # no API key configured
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("goal suggestions failed for %s: %r", user, exc)
+        raise HTTPException(status_code=502, detail="AI suggestions unavailable") from exc
+
+
 @app.post("/api/portfolio/goals")
 async def add_portfolio_goal(request: Request, user: str = Depends(_current_user)) -> dict:
     if not _MONGO:

@@ -154,3 +154,15 @@ test("goals page has a hero, goal rows with projections, and the net-worth hero 
   assert.match(css, /\.pf-goal-card/);
   assert.match(css, /\.pf-goal-hero/);
 });
+
+test("goals page renders an AI suggestions panel wired to the suggestions API", () => {
+  assert.match(source, /function GoalSuggestions/);
+  assert.match(source, /apiGoalSuggestions\(/);
+  assert.match(source, /Refresh suggestions/);
+  assert.match(source, /Dismiss/);
+  assert.match(source, /portfolio changed/i);
+  assert.match(source, /not configured/i);
+  const api = fs.readFileSync(path.join(__dirname, "api.js"), "utf8");
+  assert.match(api, /async function apiGoalSuggestions/);
+  assert.match(api, /\/api\/portfolio\/goals\/suggestions/);
+});

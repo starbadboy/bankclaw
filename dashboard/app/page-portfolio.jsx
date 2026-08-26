@@ -408,6 +408,100 @@ function GoalRow({ goal, result, projection, assetKinds, busy, editing, draft, s
   );
 }
 
+const SUGGESTION_KIND_TAG = { net_worth: "Net worth", debt_payoff: "Debt payoff", allocation: "Allocation" };
+
+function suggestionTargetText(sug, debtsById, assetKinds, privacy) {
+  if (sug.kind === "debt_payoff") return `Clear ${debtsById[sug.debt_id]?.name || "debt"}`;
+  if (sug.kind === "allocation") return `${assetKinds[sug.asset_kind]?.name || sug.asset_kind} at ${Number(sug.target_pct).toFixed(0)}%`;
+  return fmtSGD(sug.target_amount, privacy);
+}
+
+function GoalSuggestions({ goals, net, debtsById, assetKinds, onAdd, privacy }) {
+  const [state, setState] = useStatePF({ loading: true, error: "", status: null, data: null });
+  const [busyId, setBusyId] = useStatePF(null);
+  const load = async (opts = {}) => {
+    setState((cur) => ({ ...cur, loading: true, error: "" }));
+    try {
+      const data = await apiGoalSuggestions(opts);
+      setState({ loading: false, error: "", status: null, data });
+    } catch (e) {
+      setState((cur) => ({ ...cur, loading: false, error: e.message || "Failed to load suggestions", status: e.status || null }));
+    }
+  };
+  useEffectPF(() => { load(); }, []);
+
+  const add = async (sug) => {
+    setBusyId(sug.id);
+    try {
+      const payload = { kind: sug.kind, name: sug.name, target_date: sug.target_date || null };
+      if (sug.kind === "net_worth") payload.target_amount = sug.target_amount;
+      if (sug.kind === "debt_payoff") payload.debt_id = sug.debt_id;
+      if (sug.kind === "allocation") { payload.asset_kind = sug.asset_kind; payload.target_pct = sug.target_pct; }
+      await onAdd(payload);
+      await load({ dismiss: sug.id });
+    } catch (e) { setState((cur) => ({ ...cur, error: e.message || "Failed to add goal" })); }
+    finally { setBusyId(null); }
+  };
+  const dismiss = async (sug) => { setBusyId(sug.id); try { await load({ dismiss: sug.id }); } finally { setBusyId(null); } };
+
+  const data = state.data;
+  const stale = data?.snapshot && (Math.round(data.snapshot.net) !== Math.round(net) || data.snapshot.goal_count !== goals.length);
+  const notConfigured = state.status === 503;
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div className="panel-hd">
+        <h3>Suggested goals <em>· from your portfolio</em></h3>
+        <div className="tools" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {data?.generated_at && !state.loading && (
+            <span className="hint">{data.from_cache ? "Cached · " : ""}{new Date(data.generated_at).toLocaleString()}</span>
+          )}
+          {!notConfigured && (
+            <button className="btn" type="button" disabled={state.loading} onClick={() => load({ force_refresh: true })}>
+              <Icon name="sparkle" size={13} /> {state.loading ? "Thinking…" : "Refresh suggestions"}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="panel-pad">
+        {notConfigured && (
+          <div className="hint">AI suggestions are not configured — set <code>DEEPSEEK_API_KEY</code> on the server to enable them. Everything else on this page works without it.</div>
+        )}
+        {!notConfigured && state.error && <div className="hint" style={{ color: "var(--debit)" }}>{state.error}</div>}
+        {stale && !state.loading && (
+          <div className="pf-sugg-stale">Your portfolio changed since these were generated — refresh for current advice.</div>
+        )}
+        {state.loading && !data && <div className="hint">Reading your portfolio and drafting goals…</div>}
+        {data && !data.suggestions.length && !state.loading && !notConfigured && (
+          <div className="hint">Nothing left to suggest right now — refresh after your portfolio changes.</div>
+        )}
+        {data && data.suggestions.length > 0 && (
+          <div className="pf-sugg-grid">
+            {data.suggestions.map((sug) => (
+              <div key={sug.id} className={"pf-sugg-card prio-" + sug.priority}>
+                <div className="pf-goal-head">
+                  <div className="pf-goal-title">
+                    <span className="tag">{SUGGESTION_KIND_TAG[sug.kind] || sug.kind}</span>
+                    <strong>{sug.name}</strong>
+                  </div>
+                  <span className={"pf-sugg-prio " + sug.priority}>{sug.priority}</span>
+                </div>
+                <div className="pf-sugg-target">{suggestionTargetText(sug, debtsById, assetKinds, privacy)}{sug.target_date ? ` · by ${sug.target_date}` : ""}</div>
+                <p className="pf-sugg-why">{sug.rationale}</p>
+                <div className="tools" style={{ display: "flex", gap: 6 }}>
+                  <button className="btn primary" type="button" disabled={busyId === sug.id} onClick={() => add(sug)}>
+                    <Icon name="plus" size={12} stroke={2.2} /> Add goal
+                  </button>
+                  <button className="btn ghost" type="button" disabled={busyId === sug.id} onClick={() => dismiss(sug)}>Dismiss</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function GoalsCard({ goals, goalCtx, debts, assetKinds, histories, netHistory, busyId, onCreate, onUpdate, onDelete, privacy }) {
   const [editingId, setEditingId] = useStatePF(null);
   const [draft, setDraft] = useStatePF({});
@@ -458,6 +552,7 @@ function GoalsCard({ goals, goalCtx, debts, assetKinds, histories, netHistory, b
           {error && <div className="hint" style={{ color: "var(--debit)", marginTop: 6 }}>{error}</div>}
         </div>
       </div>
+      <GoalSuggestions goals={goals} net={goalCtx.net} debtsById={goalCtx.debtsById} assetKinds={assetKinds} onAdd={onCreate} privacy={privacy} />
     </>
   );
 }
