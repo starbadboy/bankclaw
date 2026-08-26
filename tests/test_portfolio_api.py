@@ -13,7 +13,6 @@ from webapp.api import (
     _DASHBOARD,
     add_portfolio_asset_type,
     add_portfolio_goal,
-    add_portfolio_goal,
     add_portfolio_valuation,
     edit_portfolio_asset_type,
     edit_portfolio_goal,
@@ -400,7 +399,7 @@ def test_root_serves_index_with_the_asset_version_substituted():
     assert resp.headers["cache-control"] == "no-cache"
 
 
-@pytest.mark.parametrize("path", ["../.env", "../webapp/api.py", "app/../../.env", "../../../../etc/passwd"])
+@pytest.mark.parametrize("path", ["../.env", "../webapp/api.py", "app/../../.env", "app/" + "../" * 12 + "etc/passwd", "a\x00b.js", "..\x00/.env"])
 def test_spa_fallback_never_serves_files_outside_the_dashboard(path):
     resp = asyncio.run(serve_spa(path))
     # anything that is not a dashboard asset falls back to the versioned index.html — never the escaped file
