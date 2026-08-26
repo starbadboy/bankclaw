@@ -36,7 +36,7 @@ function GoalPreview({ draft, goalCtx, assetKinds, privacy }) {
   const emptyText = {
     net_worth: `Net worth today ${fmtSGD(goalCtx.net, privacy)}`,
     debt_payoff: "Choose a debt to see its balance",
-    allocation: `${assetKinds?.[draft.asset_kind]?.name || draft.asset_kind} is ${result.current.toFixed(1)}% of assets today`,
+    allocation: `${assetKinds?.[draft.asset_kind]?.name || draft.asset_kind} is ${(result.current ?? 0).toFixed(1)}% of assets today`,
   }[kind];
   // Net-worth preview reads "current of target" (the saved card shows the target alone; today's value lives in the hero).
   const targetText = kind === "net_worth" ? `${fmtSGD(result.current, privacy)} of ${fmtSGD(result.target, privacy)}`
@@ -67,9 +67,9 @@ function GoalForm({ debts, assetKinds, goalCtx, busy, onCreate, privacy }) {
   const [pct, setPct] = useStateGL("");
   const [targetDate, setTargetDate] = useStateGL("");
   const [error, setError] = useStateGL("");
-  const canSubmit = kind === "net_worth" ? name.trim() && amount
+  const canSubmit = kind === "net_worth" ? name.trim() && Number(amount) > 0
     : kind === "debt_payoff" ? debtId
-    : assetKind && pct;
+    : assetKind && Number(pct) > 0;
   const draft = { kind, name, target_amount: amount, debt_id: debtId, asset_kind: assetKind, target_pct: pct, target_date: targetDate };
   const submit = async (e) => {
     e.preventDefault();

@@ -418,3 +418,9 @@ test("pickNearestGoal comparator is stable on exact ties", () => {
   const results = { x: { progress: 0.5, done: false }, y: { progress: 0.5, done: false } };
   assert.equal(pickNearestGoal(goals, results).id, pickNearestGoal([...goals].reverse(), results).id);
 });
+
+test("computeGoalProgress returns current=null for a debt goal with no matching debt (callers must not dereference it)", () => {
+  const result = computeGoalProgress({ kind: "debt_payoff", debt_id: "" }, { net: 1, assetsTotal: 1, allocationByKind: {}, debtsById: {} });
+  assert.equal(result.current, null);
+  assert.equal(result.missing, true);
+});

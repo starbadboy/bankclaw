@@ -181,6 +181,8 @@ test("goal form uses the labelled add-grid idiom and previews the draft through 
   assert.match(goalsSource, /<span>Target date/);
   assert.match(goalsSource, /pf-add-actions/);
   assert.match(goalsSource, /Enter a target/);
+  assert.match(goalsSource, /\(result\.current \?\? 0\)\.toFixed/); // preview text is evaluated for every kind; current is null for a debt draft with no debt chosen
+  assert.match(goalsSource, /Number\(amount\) > 0/); // create guard matches the edit Save guard
   assert.match(goalsSource, /baseline set when you save/i);
   assert.match(goalsSource, /GoalForm[^]*goalCtx=\{goalCtx\}/); // GoalsCard passes the live context into the form
   assert.match(source, /<GoalsCard[^]*goalCtx=\{goalCtx\}/);
