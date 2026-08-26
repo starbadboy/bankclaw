@@ -831,7 +831,7 @@ function PortfolioPage({ privacy, sub = "pf-networth", onNavigate }) {
           <div className="panel panel-pad" style={{ marginTop: 18, color: "var(--debit)", fontSize: 13 }}>{err}</div>
         )}
         <div style={{ height: 18 }} />
-        <GoalsCard goals={goals} resultsById={goalResults} projectionsById={goalProjections} net={totals.net} debtsById={goalCtx.debtsById}
+        <GoalsCard goals={goals} resultsById={goalResults} projectionsById={goalProjections} goalCtx={goalCtx}
           debts={debts} assetKinds={assetKinds} busyId={busyId} privacy={privacy}
           onCreate={createGoal} onUpdate={updateGoal} onDelete={deleteGoal} />
       </div>
