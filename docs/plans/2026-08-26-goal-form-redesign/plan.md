@@ -64,7 +64,7 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 - [ ] AC1–AC8 demonstrated (tests + screenshots)
 - [ ] All JS tests green, esbuild clean, Python fast loop unchanged
 - [ ] Tri-axis review + fix-pass verification recorded
-- [ ] Seeded demo data cleaned up
+- [x] Seeded demo data cleaned up
 
 ## Progress Log
 | Date | Task | Status | Notes |
@@ -76,7 +76,9 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 | 2026-08-26 | Task 3 | Done | UI loop, 1 look-adjust round; 52d9ca3 |
 | 2026-08-26 | Tri-axis review (Opus 5; session authored on Fable 5) | Done | Standards Warn / Spec Warn / Simplicity Warn — no CRITICAL/HIGH; see Evidence |
 | 2026-08-26 | Fix pass | Done | 11 findings fixed; f79af88 |
-| 2026-08-26 | cleanup | Open | demo user goalform-demo@local.test seeded (3 assets, 1 debt, 3 goals, 1 suggestions cache doc) |
+| 2026-08-26 | Fix-pass verification #1 (Opus 5) | Done | **New problems** — CRITICAL debt-draft crash introduced by fix #1; see Evidence |
+| 2026-08-26 | Fix pass #2 | Done | null-safe preview text, create guard; a9c4bbd |
+| 2026-08-26 | cleanup | Done | demo user goalform-demo@local.test: 3 assets, 1 debt, 3 goals deleted via API (all 200, 0 remaining); ai_goal_suggestions cache doc deleted via webapp.db |
 
 ## Evidence
 
@@ -108,3 +110,10 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 - Departures from the plan now recorded: optional Goal name for debt/allocation kinds (backend default name still applies when blank); cache-busters page-goals v5 / styles v16 / page-portfolio v15.
 - UI re-verified after the fix: `goal-form-networth.png` (69%, "206,500.00 of 300,000.00"), `goal-form-allocation.png` (52% → "Done"), `goal-edit.png` (200k → "✓ Done", green bar; empty target → Save disabled + "Enter a target"; Cancel restores 83%); name cleared on kind switch (js check). Console: 0 errors.
 - Gates after fix: JS 4/29/5/23/1 pass; esbuild 0 errors.
+
+### Fix-pass verification #1 (Opus 5) → fix pass #2 (a9c4bbd)
+- Verdict **New problems**: 11/11 findings Addressed, but fix #1's `emptyText` object literal evaluates every kind's string eagerly — the allocation arm calls `result.current.toFixed(1)`, and `computeGoalProgress` returns `current: null` for a debt draft with no debt chosen → render throw, no error boundary → blank page on the default first render of "Pay off a debt". Strictly a regression from fix #1 (the nested ternary was lazy). My post-fix UI check covered net worth and allocation but not the debt path. Also MEDIUM: the `> 0` Save guard was added to edit only; create's `canSubmit` still accepted `"0"`/`"-5"` (server rejects → error banner). Nits: version assertion near-vacuous; `aria-label="Goal kind"` kept only for a test; kind switch discards a typed name.
+- Fix #2: `(result.current ?? 0).toFixed(1)`; `canSubmit` uses `Number(amount) > 0` / `Number(pct) > 0`; executed contract test in `data.test.js` (`current === null`, `missing` for a debt goal with no matching debt) + source assertions for the null-safe form and the create guard. Cache-buster page-goals v6.
+- Live: kind → "Pay off a debt" with no debt renders (`goal-form-debt-empty.png`: "Choose a debt to see its balance", muted "Enter a target", Add disabled); name + amount 0 → Add disabled, amount 1000 → enabled. Console 0 errors.
+- Gates: JS 4/30/5/23/1 pass (data also NY TZ); esbuild 0 errors.
+- Declined nits (recorded): version assertion stays a "not v=1" tripwire (a floor needs a hand edit every bump — the reviewer's own earlier objection); `aria-label="Goal kind"` kept (harmless, matches visible text, pinned by an older test); name cleared on kind switch stays (typed names rarely fit another kind).
