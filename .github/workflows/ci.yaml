@@ -31,3 +31,15 @@ jobs:
       - name: Run CI
         run: |
           uv run pytest .
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Dashboard tests + JSX check
+        run: |
+          npm ci
+          npm test
+          npm run jsx-check

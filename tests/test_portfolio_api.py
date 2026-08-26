@@ -10,12 +10,12 @@ import pytest
 from fastapi import HTTPException
 
 from webapp.api import (
+    _DASHBOARD,
     add_portfolio_asset_type,
     add_portfolio_goal,
     add_portfolio_valuation,
     edit_portfolio_asset_type,
     edit_portfolio_goal,
-    add_portfolio_goal,
     get_asset_market_history,
     get_goal_suggestions,
     get_portfolio_asset_types,
@@ -24,7 +24,10 @@ from webapp.api import (
     remove_portfolio_asset_type,
     remove_portfolio_goal,
     remove_portfolio_valuation,
+    serve_root,
+    serve_spa,
 )
+from webapp.dashboard_assets import asset_version
 from webapp.goal_advisor import AdvisorBusy, AdvisorNotConfigured
 from webapp.market_data import MarketDataError
 
@@ -383,3 +386,39 @@ def test_goal_suggestions_route_reports_busy_as_429():
         with pytest.raises(HTTPException) as busy:
             asyncio.run(get_goal_suggestions(_JsonRequest({}), user="owner@example.com"))
     assert busy.value.status_code == 429
+
+
+# --- dashboard shell: versioned index.html, no path traversal --------------------------------------------------
+
+
+def test_root_serves_index_with_the_asset_version_substituted():
+    resp = asyncio.run(serve_root())
+    body = resp.body.decode()
+    assert "__V__" not in body
+    assert f"?v={asset_version(_DASHBOARD)}" in body
+    assert resp.headers["cache-control"] == "no-cache"
+
+
+_HOSTILE_PATHS = [
+    "../.env",
+    "../webapp/api.py",
+    "app/../../.env",
+    "app/" + "../" * 12 + "etc/passwd",
+    "a\x00b.js",  # NUL byte → ValueError from resolve()
+    "..\x00/.env",
+    "x" * 300 + ".js",  # over NAME_MAX → OSError from is_file()
+    "app/" + "x" * 300 + ".js",
+]
+
+
+@pytest.mark.parametrize("path", _HOSTILE_PATHS)
+def test_spa_fallback_never_serves_files_outside_the_dashboard(path):
+    resp = asyncio.run(serve_spa(path))
+    # anything that is not a dashboard asset falls back to the versioned index.html — never the escaped file
+    assert resp.headers["content-type"].startswith("text/html")
+    assert b"MONGODB_URL" not in resp.body and b"FastAPI" not in resp.body
+
+
+def test_spa_serves_a_real_dashboard_asset():
+    resp = asyncio.run(serve_spa("app/data.js"))
+    assert resp.path.endswith("dashboard/app/data.js")

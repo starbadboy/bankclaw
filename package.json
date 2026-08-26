@@ -1,0 +1,14 @@
+{
+  "name": "bankclaw-dashboard-tests",
+  "private": true,
+  "description": "Dev-only: node test runner deps for dashboard/app (React from CDN at runtime)",
+  "scripts": {
+    "test": "for f in dashboard/app/*.test.js; do node --test \"$f\" || exit 1; done",
+    "jsx-check": "esbuild dashboard/app/*.jsx --loader:.jsx=jsx --outdir=/tmp/jsxcheck"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}
