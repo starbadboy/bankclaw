@@ -6,7 +6,7 @@
 **Goal:** Three goal kinds with progress + deterministic projections, a redesigned Goals page with a summary hero, an AI suggestions panel (aggregates-only, cached, one-click add), and a nearest-goal line on the Net worth hero.
 **Architecture:** Additive goal fields in the Mongo repository → existing goal routes → pure progress/projection helpers in `data.js` → redesigned `GoalsCard`/Goals page. AI: new `webapp/goal_advisor.py` (aggregate → DeepSeek → normalised suggestions, Mongo cache) behind one new route, consumed by a suggestions panel.
 **Complexity Path:** `Simplified TDD path` — `tests/e2e` is Streamlit-mocked, no browser harness.
-**Status:** Draft
+**Status:** In Progress
 **Branch:** `feat/portfolio-goals-ai`
 
 ## Architecture Review
@@ -100,3 +100,4 @@ Reused: goal routes + `api.js` goal functions, `allocation`/`assetKinds`/`totals
 |---|---|---|---|
 | 2026-08-26 | Phase 0–2 | Done | intent.md confirmed; test points confirmed; spec.md saved |
 | 2026-08-26 | Interrogation pass | Done | 4 findings fixed: (1) `goal_advisor` must not import pandas and must be lazy-imported in the route (pandas stub in route tests); (2) debt baseline capture requires reading the debt in `create_goal` — test mocks stated; (3) legacy docs without `kind` — serializer default made explicit in Task 1; (4) cache-buster bumps listed per task; Task 3 dependency on Task 2 clarified as layout-only. |
+| 2026-08-26 | Task 1 | Done | Repository: `kind` (default `net_worth`), `_goal_kind_fields` (debt baseline read from `portfolio_debts` at creation + default name "Pay off {debt}"; allocation `asset_kind` via `_validate_asset_kind`, `target_pct` 1–100, default name "{Class} at N%"), kind immutable on update, `target_pct` editable. Routes unchanged (payload pass-through). `data.js` `computeGoalProgress` (net worth / debt baseline / allocation ±2 pp band; `missing` for deleted debt). `GoalsCard` → `GoalForm` (kind select swaps fields) + kind tag + per-kind target text; `goalCtx` memo in the page. CSS `.pf-goal-form`; cache-busters page-portfolio v11, data v6, styles v10. Evidence: Python fast loop **182 passed**; JS data 25 (both TZ), portfolio 19, others green; esbuild 0 errors. Old regex test asserting inline `Math.min(1,` replaced by a helper-usage assertion (math now tested in data.test.js). |

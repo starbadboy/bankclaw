@@ -1321,3 +1321,7 @@ body {
   .pf-asset-type-row .btn { grid-column: 2; justify-self: start; }
   .pf-asset-type-row .pf-valuation-delete { grid-column: 3; grid-row: 1 / span 2; }
 }
+
+/* ── Goals ─────────────────────────────────────────────────────────────── */
+.pf-goal-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pf-goal-form select { padding: 8px 10px; border: 1px solid var(--rule); border-radius: 2px; background: var(--paper); color: var(--ink); font: 400 13px "IBM Plex Sans", sans-serif; }

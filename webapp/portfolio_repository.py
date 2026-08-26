@@ -430,13 +430,50 @@ def delete_asset_type(user_email: str, type_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
+_GOAL_KINDS = {"net_worth", "debt_payoff", "allocation"}
+
+
 def _serialize_goal(doc: dict) -> dict:
     return {
         "id": str(doc["_id"]),
         "name": doc["name"],
-        "target_amount": doc["target_amount"],
+        "kind": doc.get("kind") or "net_worth",  # goals created before kinds existed
+        "target_amount": doc.get("target_amount"),
         "target_date": doc.get("target_date"),
+        "debt_id": str(doc["debt_id"]) if doc.get("debt_id") else None,
+        "baseline": doc.get("baseline"),
+        "asset_kind": doc.get("asset_kind"),
+        "target_pct": doc.get("target_pct"),
     }
+
+
+def _normalize_target_pct(raw: object) -> float:
+    pct = _coerce_value(raw, field="target_pct")
+    if not 1 <= pct <= 100:
+        raise ValueError("target_pct must be between 1 and 100")
+    return pct
+
+
+def _goal_kind_fields(user_email: str, kind: str, payload: dict) -> dict:
+    """Kind-specific fields for a new goal, including a default name."""
+    if kind == "net_worth":
+        return {"target_amount": _normalize_goal_target(payload.get("target_amount")), "default_name": None}
+    if kind == "debt_payoff":
+        if not payload.get("debt_id"):
+            raise ValueError("debt_id is required for a debt payoff goal")
+        oid = _to_oid(str(payload["debt_id"]))
+        debt = get_db()[_DEBTS_COLLECTION].find_one({"_id": oid, "user_email": user_email})
+        if not debt:
+            raise ValueError("Debt not found")
+        return {"debt_id": oid, "baseline": float(debt.get("value") or 0.0), "default_name": f"Pay off {debt['name']}"}
+    if kind == "allocation":
+        if not payload.get("asset_kind"):
+            raise ValueError("asset_kind is required for an allocation goal")
+        asset_kind = _validate_asset_kind(user_email, str(payload["asset_kind"]))
+        pct = _normalize_target_pct(payload.get("target_pct"))
+        label = {"cash": "Cash & savings"}.get(asset_kind, asset_kind.replace("_", " ").capitalize())
+        return {"asset_kind": asset_kind, "target_pct": pct, "default_name": f"{label} at {pct:g}%"}
+    raise ValueError(f"Unknown goal kind '{kind}'")
 
 
 def _normalize_goal_target(raw: object) -> float:
@@ -464,11 +501,20 @@ def list_goals(user_email: str) -> list[dict]:
 def create_goal(user_email: str, payload: dict) -> dict:
     _ensure_indexes()
     now = _now_iso()
+    kind = str(payload.get("kind") or "net_worth")
+    fields = _goal_kind_fields(user_email, kind, payload)
+    default_name = fields.pop("default_name")
+    name = _clean_str(payload.get("name"), field="name", max_len=80, required=default_name is None) or default_name
     doc = {
         "user_email": user_email,
-        "name": _clean_str(payload.get("name"), field="name", max_len=80),
-        "target_amount": _normalize_goal_target(payload.get("target_amount")),
+        "name": name,
+        "kind": kind,
+        "target_amount": fields.get("target_amount"),
         "target_date": _normalize_goal_date(payload.get("target_date")),
+        "debt_id": fields.get("debt_id"),
+        "baseline": fields.get("baseline"),
+        "asset_kind": fields.get("asset_kind"),
+        "target_pct": fields.get("target_pct"),
         "created_at": now,
         "updated_at": now,
     }
@@ -480,10 +526,14 @@ def create_goal(user_email: str, payload: dict) -> dict:
 def update_goal(user_email: str, goal_id: str, payload: dict) -> dict:
     _ensure_indexes()
     set_doc: dict = {}
+    if "kind" in payload:
+        raise ValueError("kind cannot be changed; delete the goal and create a new one")
     if "name" in payload:
         set_doc["name"] = _clean_str(payload["name"], field="name", max_len=80)
     if "target_amount" in payload:
         set_doc["target_amount"] = _normalize_goal_target(payload["target_amount"])
+    if "target_pct" in payload:
+        set_doc["target_pct"] = _normalize_target_pct(payload["target_pct"])
     if "target_date" in payload:
         set_doc["target_date"] = _normalize_goal_date(payload["target_date"])
     if not set_doc:

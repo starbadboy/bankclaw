@@ -180,6 +180,35 @@ function buildHoldingChartData(points, mode, options = {}) {
   return labelled.map((d) => (d.label && seen++ % step !== 0 ? { ...d, label: "" } : d));
 }
 
+const GOAL_ALLOCATION_BAND_PP = 2; // allocation goals are "done" within ±2 percentage points
+
+// Progress for one goal against the current portfolio.
+// ctx: { net, assetsTotal, allocationByKind: {kind: value}, debtsById: {id: debt} }
+// Returns { progress 0..1, done, current, target, missing? }. Goals without a kind are net-worth milestones.
+function computeGoalProgress(goal, ctx) {
+  const kind = goal.kind || "net_worth";
+  const clamp = (v) => Math.min(1, Math.max(0, v));
+  if (kind === "debt_payoff") {
+    const debt = ctx.debtsById?.[goal.debt_id];
+    if (!debt) return { progress: 0, done: false, current: null, target: 0, missing: true };
+    const baseline = Number(goal.baseline) || 0;
+    const current = Number(debt.value) || 0;
+    const progress = baseline > 0 ? clamp((baseline - current) / baseline) : (current <= 0 ? 1 : 0);
+    return { progress, done: current <= 0, current, target: 0 };
+  }
+  if (kind === "allocation") {
+    const total = Number(ctx.assetsTotal) || 0;
+    const current = total > 0 ? ((Number(ctx.allocationByKind?.[goal.asset_kind]) || 0) / total) * 100 : 0;
+    const target = Number(goal.target_pct) || 0;
+    const done = Math.abs(current - target) <= GOAL_ALLOCATION_BAND_PP;
+    const progress = done ? 1 : clamp(1 - Math.abs(current - target) / Math.max(1, target));
+    return { progress, done, current, target };
+  }
+  const target = Number(goal.target_amount) || 0;
+  const current = Number(ctx.net) || 0;
+  return { progress: target > 0 ? clamp(current / target) : 0, done: current >= target, current, target };
+}
+
 function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
   const months = Math.max(1, Number(options.months) || 12);
   const now = options.now instanceof Date ? options.now : new Date();
@@ -363,6 +392,6 @@ function relDateGroup(iso) {
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend, buildHoldingChartData,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend, buildHoldingChartData, computeGoalProgress,
   fmtSGD, fmtDate, relDateGroup,
 });

@@ -344,3 +344,31 @@ test("holding chart data carries each point's date for hover tooltips", () => {
   const points = [{ date: "2026-08-03", price: 1.5, value: 150 }, { date: "2026-08-04", price: 1.6, value: 160 }];
   assert.deepEqual(buildHoldingChartData(points, "value").map((d) => d.date), ["2026-08-03", "2026-08-04"]);
 });
+
+test("goal progress: net worth (legacy and explicit), debt payoff from baseline, allocation band", () => {
+  const ctx = {
+    net: 50000,
+    assetsTotal: 80000,
+    allocationByKind: { equities: 24000, cash: 56000 },
+    debtsById: { d1: { id: "d1", name: "Car loan", value: 6000 } },
+  };
+  const legacy = computeGoalProgress({ name: "100k", target_amount: 100000 }, ctx);
+  assert.equal(legacy.progress, 0.5);
+  assert.equal(legacy.done, false);
+  assert.equal(computeGoalProgress({ kind: "net_worth", target_amount: 40000 }, ctx).done, true);
+
+  const debt = computeGoalProgress({ kind: "debt_payoff", debt_id: "d1", baseline: 18000 }, ctx);
+  assert.equal(debt.progress, 2 / 3);
+  assert.equal(debt.current, 6000);
+  assert.equal(debt.done, false);
+  assert.equal(computeGoalProgress({ kind: "debt_payoff", debt_id: "d1", baseline: 18000 }, { ...ctx, debtsById: { d1: { value: 0 } } }).done, true);
+  assert.equal(computeGoalProgress({ kind: "debt_payoff", debt_id: "gone", baseline: 18000 }, ctx).missing, true);
+
+  const alloc = computeGoalProgress({ kind: "allocation", asset_kind: "equities", target_pct: 40 }, ctx);
+  assert.equal(alloc.current, 30);             // 24k of 80k
+  assert.equal(alloc.progress, 0.75);          // 1 - |30-40|/40
+  assert.equal(alloc.done, false);
+  assert.equal(computeGoalProgress({ kind: "allocation", asset_kind: "equities", target_pct: 31 }, ctx).done, true); // within ±2pp
+  assert.equal(computeGoalProgress({ kind: "allocation", asset_kind: "crypto", target_pct: 10 }, ctx).current, 0);
+  assert.equal(computeGoalProgress({ kind: "allocation", asset_kind: "equities", target_pct: 10 }, ctx).progress, 0); // floored
+});

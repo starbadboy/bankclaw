@@ -52,10 +52,10 @@ test("portfolio page manages net-worth goals through the API", () => {
   assert.match(source, /apiDeletePortfolioGoal/);
 });
 
-test("goal progress derives from net worth, capped, with computed done state", () => {
-  assert.match(source, /goal\.target_amount/);
-  assert.match(source, /Math\.min\(1,/);
-  assert.match(source, /net >= goal\.target_amount|goal\.target_amount <= .*net/);
+test("goal progress and done state come from the shared data helper, not inline math", () => {
+  assert.match(source, /const result = computeGoalProgress\(goal, goalCtx\)/);
+  assert.match(source, /result\.done/);
+  assert.doesNotMatch(source, /net \/ goal\.target_amount/);
 });
 
 test("dedicated goals page renders GoalsCard via the pf-goals sub", () => {
@@ -133,4 +133,12 @@ test("NetWorthChart shows a hover tooltip with the point's date and value", () =
   assert.match(chart, /onMouseLeave/);
   assert.match(chart, /hoverIdx/);
   assert.match(chart, /\{hovered\.date\} · S\$ \{fmtValue\(hovered\.value\)\}/);
+});
+
+test("goal form offers three kinds and rows compute progress through the data helper", () => {
+  assert.match(source, /computeGoalProgress\(/);
+  assert.match(source, /"debt_payoff"/);
+  assert.match(source, /"allocation"/);
+  assert.match(source, /Debt removed/);
+  assert.match(source, /aria-label="Goal kind"/);
 });
