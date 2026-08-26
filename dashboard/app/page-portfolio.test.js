@@ -57,7 +57,7 @@ test("goal progress and done state come from the shared data helper, not inline 
   assert.match(source, /computeGoalProgress\(g, goalCtx\)/);
   assert.match(goalsSource, /result\.done/);
   assert.doesNotMatch(goalsSource, /net \/ goal\.target_amount/);
-  assert.doesNotMatch(goalsSource, /computeGoalProgress\(/); // computed once, in PortfolioPage
+  assert.equal((goalsSource.match(/computeGoalProgress\(/g) || []).length, 1); // saved rows use resultsById; only the draft preview computes
 });
 
 test("dedicated goals page renders GoalsCard via the pf-goals sub", () => {
@@ -171,4 +171,20 @@ test("goals page renders an AI suggestions panel wired to the suggestions API", 
   const api = fs.readFileSync(path.join(__dirname, "api.js"), "utf8");
   assert.match(api, /async function apiGoalSuggestions/);
   assert.match(api, /\/api\/portfolio\/goals\/suggestions/);
+});
+
+test("goal form uses the labelled add-grid idiom and previews the draft through the progress helper", () => {
+  assert.match(goalsSource, /function GoalPreview/);
+  assert.match(goalsSource, /computeGoalProgress\(/); // preview reuses the helper, never re-derives the math
+  assert.match(goalsSource, /className="pf-add-row pf-goal-form"/);
+  assert.match(goalsSource, /pf-add-grid/);
+  assert.match(goalsSource, /<span>Goal kind<\/span>/);
+  assert.match(goalsSource, /<span>Target date/);
+  assert.match(goalsSource, /pf-add-actions/);
+  assert.match(goalsSource, /Enter a target/);
+  assert.match(goalsSource, /baseline set when you save/i);
+  assert.match(goalsSource, /GoalForm[^]*goalCtx=\{goalCtx\}/); // GoalsCard passes the live context into the form
+  assert.match(source, /<GoalsCard[^]*goalCtx=\{goalCtx\}/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=2"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "styles.css"), "utf8"), /\.pf-goal-form\b[^}]*auto-fit/);
 });

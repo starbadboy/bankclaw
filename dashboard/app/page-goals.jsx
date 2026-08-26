@@ -22,7 +22,37 @@ function goalTargetText(goal, result, assetKinds, privacy) {
   return fmtSGD(goal.target_amount, privacy);
 }
 
-function GoalForm({ debts, assetKinds, busy, onCreate }) {
+// Mini goal card for a draft: same bar / % / target text as a saved card, computed from today's portfolio.
+function GoalPreview({ draft, goalCtx, assetKinds, privacy }) {
+  const kind = draft.kind || "net_worth";
+  const goal = kind === "debt_payoff" ? { ...draft, baseline: goalCtx.debtsById?.[draft.debt_id]?.value } : draft;
+  const hasTarget = kind === "net_worth" ? Number(draft.target_amount) > 0
+    : kind === "debt_payoff" ? Boolean(goalCtx.debtsById?.[draft.debt_id])
+    : Number(draft.target_pct) > 0;
+  const result = computeGoalProgress(goal, goalCtx);
+  const pct = !hasTarget ? "Enter a target" : result.done ? "Reached" : `${Math.round(result.progress * 100)}%`;
+  const text = !hasTarget
+    ? kind === "net_worth" ? `Net worth today ${fmtSGD(goalCtx.net, privacy)}`
+      : kind === "debt_payoff" ? "Choose a debt to see its balance"
+      : `${assetKinds?.[draft.asset_kind]?.name || draft.asset_kind} is ${result.current.toFixed(1)}% of assets today`
+    : kind === "net_worth" ? `${fmtSGD(result.current, privacy)} of ${fmtSGD(result.target, privacy)}`
+    : goalTargetText(goal, result, assetKinds, privacy) + (kind === "debt_payoff" ? " · baseline set when you save" : "");
+  return (
+    <div className={"pf-goal-card pf-goal-preview" + (hasTarget && result.done ? " done" : "")}>
+      <div className="pf-goal-head">
+        <div className="pf-goal-title">
+          <span className="tag">{goalKindTag(kind)}</span>
+          <strong>{draft.name?.trim() || "Preview"}</strong>
+        </div>
+        <div className="pf-goal-pct tnum">{pct}</div>
+      </div>
+      <div className="pf-goal-bar"><div style={{ width: `${hasTarget ? result.progress * 100 : 0}%` }} /></div>
+      <div className="pf-goal-meta"><span>{text}{draft.target_date ? ` · by ${draft.target_date}` : ""}</span></div>
+    </div>
+  );
+}
+
+function GoalForm({ debts, assetKinds, goalCtx, busy, onCreate, privacy }) {
   const [kind, setKind] = useStateGL("net_worth");
   const [name, setName] = useStateGL("");
   const [amount, setAmount] = useStateGL("");
@@ -34,6 +64,7 @@ function GoalForm({ debts, assetKinds, busy, onCreate }) {
   const canSubmit = kind === "net_worth" ? name.trim() && amount
     : kind === "debt_payoff" ? debtId
     : assetKind && pct;
+  const draft = { kind, name, target_amount: amount, debt_id: debtId, asset_kind: assetKind, target_pct: pct, target_date: targetDate };
   const submit = async (e) => {
     e.preventDefault();
     setError("");
@@ -48,37 +79,73 @@ function GoalForm({ debts, assetKinds, busy, onCreate }) {
     } catch (err) { setError(err.message); }
   };
   return (
-    <form onSubmit={submit} className="pf-goal-form">
-      <select aria-label="Goal kind" value={kind} onChange={(e) => setKind(e.target.value)}>
-        {GOAL_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
-      </select>
-      {kind === "net_worth" && (
-        <>
-          <input aria-label="Goal name" placeholder="Goal name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input aria-label="Target amount (S$)" type="number" min="1" step="any" placeholder="Target S$" value={amount}
-            onChange={(e) => setAmount(e.target.value)} style={{ width: 120 }} />
-        </>
-      )}
-      {kind === "debt_payoff" && (
-        <select aria-label="Debt" value={debtId} onChange={(e) => setDebtId(e.target.value)}>
-          <option value="">Choose a debt…</option>
-          {debts.map((d) => <option key={d.id} value={d.id}>{d.name} · {fmtSGD(d.value, false)}</option>)}
-        </select>
-      )}
-      {kind === "allocation" && (
-        <>
-          <select aria-label="Asset class" value={assetKind} onChange={(e) => setAssetKind(e.target.value)}>
-            {Object.entries(assetKinds).map(([id, k]) => <option key={id} value={id}>{k.name}</option>)}
+    <form onSubmit={submit} className="pf-add-row pf-goal-form">
+      <div className="pf-add-grid">
+        <label>
+          <span>Goal kind</span>
+          <select aria-label="Goal kind" value={kind} onChange={(e) => setKind(e.target.value)}>
+            {GOAL_KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}
           </select>
-          <input aria-label="Target %" type="number" min="1" max="100" step="any" placeholder="Target %" value={pct}
-            onChange={(e) => setPct(e.target.value)} style={{ width: 100 }} />
-        </>
-      )}
-      <input aria-label="Target date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
-      <button className="btn primary" type="submit" disabled={!canSubmit || busy}>
-        <Icon name="plus" size={12} stroke={2.2} /> Add goal
-      </button>
-      {error && <div className="hint" style={{ color: "var(--debit)", flexBasis: "100%" }}>{error}</div>}
+        </label>
+        {kind === "net_worth" && (
+          <>
+            <label>
+              <span>Goal name</span>
+              <input aria-label="Goal name" placeholder="e.g. First million" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+            <label>
+              <span>Target (S$)</span>
+              <input aria-label="Target amount (S$)" type="number" min="1" step="any" placeholder="0.00" value={amount}
+                onChange={(e) => setAmount(e.target.value)} />
+            </label>
+          </>
+        )}
+        {kind === "debt_payoff" && (
+          <>
+            <label>
+              <span>Debt</span>
+              <select aria-label="Debt" value={debtId} onChange={(e) => setDebtId(e.target.value)}>
+                <option value="">Choose a debt…</option>
+                {debts.map((d) => <option key={d.id} value={d.id}>{d.name} · {fmtSGD(d.value, false)}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Goal name <em>(optional)</em></span>
+              <input aria-label="Goal name" placeholder="Pay off …" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+          </>
+        )}
+        {kind === "allocation" && (
+          <>
+            <label>
+              <span>Asset class</span>
+              <select aria-label="Asset class" value={assetKind} onChange={(e) => setAssetKind(e.target.value)}>
+                {Object.entries(assetKinds).map(([id, k]) => <option key={id} value={id}>{k.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Target %</span>
+              <input aria-label="Target %" type="number" min="1" max="100" step="any" placeholder="e.g. 30" value={pct}
+                onChange={(e) => setPct(e.target.value)} />
+            </label>
+            <label>
+              <span>Goal name <em>(optional)</em></span>
+              <input aria-label="Goal name" placeholder="Equities at 30%" value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+          </>
+        )}
+        <label>
+          <span>Target date <em>(optional)</em></span>
+          <input aria-label="Target date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} />
+        </label>
+      </div>
+      <GoalPreview draft={draft} goalCtx={goalCtx} assetKinds={assetKinds} privacy={privacy} />
+      <div className="pf-add-actions">
+        {error && <div className="hint" style={{ color: "var(--debit)", marginRight: "auto" }}>{error}</div>}
+        <button className="btn primary" type="submit" disabled={!canSubmit || busy}>
+          <Icon name="plus" size={12} stroke={2.2} /> Add goal
+        </button>
+      </div>
     </form>
   );
 }
@@ -256,7 +323,7 @@ function GoalSuggestions({ goals, net, debtsById, assetKinds, onAdd, privacy }) 
   );
 }
 
-function GoalsCard({ goals, resultsById, projectionsById, net, debtsById, debts, assetKinds, busyId, onCreate, onUpdate, onDelete, privacy }) {
+function GoalsCard({ goals, resultsById, projectionsById, goalCtx, net, debtsById, debts, assetKinds, busyId, onCreate, onUpdate, onDelete, privacy }) {
   const [editingId, setEditingId] = useStateGL(null);
   const [draft, setDraft] = useStateGL({});
   const [error, setError] = useStateGL("");
@@ -293,8 +360,8 @@ function GoalsCard({ goals, resultsById, projectionsById, net, debtsById, debts,
             ))}
           </div>
           {!goals.length && <div className="hint" style={{ marginBottom: 10 }}>No goals yet — add a milestone, a debt payoff or an allocation target below.</div>}
-          <GoalForm debts={debts} assetKinds={assetKinds} busy={busyId === "goal:create"} onCreate={onCreate} />
-          {error && <div className="hint" style={{ color: "var(--debit)", marginTop: 6 }}>{error}</div>}
+          {error && <div className="hint" style={{ color: "var(--debit)", marginBottom: 10 }}>{error}</div>}
+          <GoalForm debts={debts} assetKinds={assetKinds} goalCtx={goalCtx} busy={busyId === "goal:create"} onCreate={onCreate} privacy={privacy} />
         </div>
       </div>
       <GoalSuggestions goals={goals} net={net} debtsById={debtsById} assetKinds={assetKinds} onAdd={onCreate} privacy={privacy} />

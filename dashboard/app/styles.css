@@ -1323,8 +1323,9 @@ body {
 }
 
 /* ── Goals ─────────────────────────────────────────────────────────────── */
-.pf-goal-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.pf-goal-form select { padding: 8px 10px; border: 1px solid var(--rule); border-radius: 2px; background: var(--paper); color: var(--ink); font: 400 13px "IBM Plex Sans", sans-serif; }
+.pf-goal-form { border: 1px solid var(--rule); border-radius: var(--radius); }
+.pf-goal-form .pf-add-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.pf-goal-preview { margin-top: 16px; background: var(--paper); }
 .pf-goal-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .pf-goal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .pf-goal-card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 18px; background: var(--paper); display: flex; flex-direction: column; gap: 10px; }
