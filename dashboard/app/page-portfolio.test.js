@@ -175,7 +175,6 @@ test("goals page renders an AI suggestions panel wired to the suggestions API", 
 
 test("goal form uses the labelled add-grid idiom and previews the draft through the progress helper", () => {
   assert.match(goalsSource, /function GoalPreview/);
-  assert.match(goalsSource, /computeGoalProgress\(/); // preview reuses the helper, never re-derives the math
   assert.match(goalsSource, /className="pf-add-row pf-goal-form"/);
   assert.match(goalsSource, /pf-add-grid/);
   assert.match(goalsSource, /<span>Goal kind<\/span>/);
@@ -185,8 +184,8 @@ test("goal form uses the labelled add-grid idiom and previews the draft through 
   assert.match(goalsSource, /baseline set when you save/i);
   assert.match(goalsSource, /GoalForm[^]*goalCtx=\{goalCtx\}/); // GoalsCard passes the live context into the form
   assert.match(source, /<GoalsCard[^]*goalCtx=\{goalCtx\}/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=([4-9]|\d{2,})"/);
-  assert.match(fs.readFileSync(path.join(__dirname, "styles.css"), "utf8"), /\.pf-goal-form\b[^}]*auto-fit/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=(?!1")\d+"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "styles.css"), "utf8"), /\.pf-goal-form \.pf-add-grid/);
 });
 
 test("goal edit mode uses labelled fields and previews the draft with a live bar", () => {

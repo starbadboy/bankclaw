@@ -1324,8 +1324,8 @@ body {
 
 /* ── Goals ─────────────────────────────────────────────────────────────── */
 .pf-goal-form { border: 1px solid var(--rule); border-radius: var(--radius); }
-.pf-goal-form .pf-add-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-.pf-goal-preview { margin-top: 16px; background: var(--paper); }
+.pf-goal-form .pf-add-grid, .pf-goal-card.editing .pf-add-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.pf-goal-preview { margin-top: 16px; }
 .pf-goal-preview .pf-goal-pct.muted { font: 400 12.5px "IBM Plex Sans", sans-serif; color: var(--ink-4); letter-spacing: 0.02em; }
 .pf-goal-hero { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .pf-goal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-bottom: 18px; }
@@ -1333,7 +1333,6 @@ body {
 .pf-goal-card.done { border-color: oklch(0.8 0.08 150 / 0.7); }
 .pf-goal-card.missing { opacity: 0.75; }
 .pf-goal-card.editing { grid-column: 1 / -1; background: var(--paper-2); gap: 0; }
-.pf-goal-card.editing .pf-add-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .pf-goal-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .pf-goal-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pf-goal-title strong { font-family: "Instrument Serif", serif; font-size: 18px; font-weight: 400; letter-spacing: 0.005em; }
