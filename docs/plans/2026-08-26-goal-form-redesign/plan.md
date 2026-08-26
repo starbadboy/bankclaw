@@ -78,7 +78,7 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 | 2026-08-26 | Fix pass | Done | 11 findings fixed; f79af88 |
 | 2026-08-26 | Fix-pass verification #1 (Opus 5) | Done | **New problems** — CRITICAL debt-draft crash introduced by fix #1; see Evidence |
 | 2026-08-26 | Fix pass #2 | Done | null-safe preview text, create guard; a9c4bbd |
-| 2026-08-26 | cleanup | Done | demo user goalform-demo@local.test: 3 assets, 1 debt, 3 goals deleted via API (all 200, 0 remaining); ai_goal_suggestions cache doc deleted via webapp.db |
+| 2026-08-26 | cleanup | Done | demo user goalform-demo@local.test: 3 assets, 1 debt, 3 goals deleted via API (all 200, 0 remaining); ai_goal_suggestions cache doc (1) and the auto-created default `profiles` doc (1) deleted via webapp.db; collection scan shows 0 docs left for the user |
 
 ## Evidence
 
