@@ -209,6 +209,47 @@ function computeGoalProgress(goal, ctx) {
   return { progress: target > 0 ? clamp(current / target) : 0, done: current >= target, current, target };
 }
 
+const _MS_PER_DAY = 86400000;
+const _DAYS_PER_MONTH = 30.4375;
+const _isoToDay = (iso) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))) / _MS_PER_DAY;
+const _dayToIso = (day) => new Date(Math.round(day) * _MS_PER_DAY).toISOString().slice(0, 10);
+
+// On-track projection for a goal from dated points [{date, value}] (net-worth history, or a debt's balances).
+// opts: { now: "YYYY-MM-DD", current }. Returns { eta: iso|null, monthlyNeeded: number|null, reason }.
+// reason ∈ ok | done | not_enough_history | not_on_track | n/a. Least-squares slope per day; no Date parsing of ISO strings.
+function projectGoal(goal, points, opts = {}) {
+  const kind = goal.kind || "net_worth";
+  if (kind === "allocation") return { eta: null, monthlyNeeded: null, reason: "n/a" };
+  const target = kind === "debt_payoff" ? 0 : Number(goal.target_amount) || 0;
+  const current = Number(opts.current) || 0;
+  const nowDay = _isoToDay(opts.now || new Date().toISOString().slice(0, 10));
+  const remaining = kind === "debt_payoff" ? current : target - current;
+  let monthlyNeeded = null;
+  if (goal.target_date) {
+    const months = (_isoToDay(goal.target_date) - nowDay) / _DAYS_PER_MONTH;
+    monthlyNeeded = months > 0 ? remaining / months : null;
+  }
+  if (remaining <= 0) return { eta: opts.now || null, monthlyNeeded: null, reason: "done" };
+  const pts = (points || []).filter((p) => p && /^\d{4}-\d{2}-\d{2}$/.test(p.date) && Number.isFinite(Number(p.value)));
+  if (pts.length < 2 || _isoToDay(pts[pts.length - 1].date) - _isoToDay(pts[0].date) < 30) {
+    return { eta: null, monthlyNeeded, reason: "not_enough_history" };
+  }
+  const xs = pts.map((p) => _isoToDay(p.date)), ys = pts.map((p) => Number(p.value));
+  const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+  const slope = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / Math.max(1e-9, xs.reduce((a, x) => a + (x - mx) ** 2, 0));
+  const towards = kind === "debt_payoff" ? -slope : slope; // positive = moving toward the target
+  if (towards <= 1e-9) return { eta: null, monthlyNeeded, reason: "not_on_track" };
+  return { eta: _dayToIso(nowDay + remaining / towards), monthlyNeeded, reason: "ok" };
+}
+
+// The unfinished goal with the highest progress; ties broken by the earliest target date (undated last).
+function pickNearestGoal(goals, resultsById) {
+  const open = (goals || []).filter((g) => resultsById?.[g.id] && !resultsById[g.id].done && !resultsById[g.id].missing);
+  if (!open.length) return null;
+  return [...open].sort((a, b) => (resultsById[b.id].progress - resultsById[a.id].progress)
+    || ((a.target_date || "9999") < (b.target_date || "9999") ? -1 : 1))[0];
+}
+
 function buildPortfolioNetWorthHistory(assets, debts, histories, options = {}) {
   const months = Math.max(1, Number(options.months) || 12);
   const now = options.now instanceof Date ? options.now : new Date();
@@ -392,6 +433,6 @@ function relDateGroup(iso) {
 Object.assign(window, {
   BANKS, CATEGORIES, SUPPORTED_BANKS, TRANSACTIONS,
   totalsFor, spendByCategory, dailyFlow, lastMonthFlow,
-  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend, buildHoldingChartData, computeGoalProgress,
+  buildPortfolioNetWorthHistory, getPortfolioItemSeries, computePortfolioPerformance, computeSpendingTrend, buildHoldingChartData, computeGoalProgress, projectGoal, pickNearestGoal,
   fmtSGD, fmtDate, relDateGroup,
 });

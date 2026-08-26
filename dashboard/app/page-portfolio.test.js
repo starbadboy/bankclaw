@@ -53,7 +53,7 @@ test("portfolio page manages net-worth goals through the API", () => {
 });
 
 test("goal progress and done state come from the shared data helper, not inline math", () => {
-  assert.match(source, /const result = computeGoalProgress\(goal, goalCtx\)/);
+  assert.match(source, /computeGoalProgress\(g, goalCtx\)/);
   assert.match(source, /result\.done/);
   assert.doesNotMatch(source, /net \/ goal\.target_amount/);
 });
@@ -141,4 +141,16 @@ test("goal form offers three kinds and rows compute progress through the data he
   assert.match(source, /"allocation"/);
   assert.match(source, /Debt removed/);
   assert.match(source, /aria-label="Goal kind"/);
+});
+
+test("goals page has a hero, goal rows with projections, and the net-worth hero names the next goal", () => {
+  assert.match(source, /function GoalsHero/);
+  assert.match(source, /function GoalRow/);
+  assert.match(source, /projectGoal\(/);
+  assert.match(source, /pickNearestGoal\(/);
+  assert.match(source, /not enough history/i);
+  assert.match(source, /Next goal/);
+  const css = fs.readFileSync(path.join(__dirname, "styles.css"), "utf8");
+  assert.match(css, /\.pf-goal-card/);
+  assert.match(css, /\.pf-goal-hero/);
 });

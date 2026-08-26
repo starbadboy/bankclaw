@@ -1059,7 +1059,7 @@ function App() {
         {mode === "ledger" && page === "banks" && <BanksPage transactions={transactions} privacy={tweaks.privacy} onNav={navigate} />}
 
         {mode === "portfolio" && (page === "pf-networth" || page === "pf-holdings" || page === "pf-allocation" || page === "pf-performance" || page === "pf-goals") &&
-          <PortfolioPage privacy={tweaks.privacy} sub={page} />}
+          <PortfolioPage privacy={tweaks.privacy} sub={page} onNavigate={navigate} />}
         {mode === "portfolio" && page === "pf-accounts" && (
           <div className="page">
             <div className="page-kicker">Library</div>
