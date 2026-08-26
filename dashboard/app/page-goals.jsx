@@ -25,7 +25,7 @@ function goalTargetText(goal, result, assetKinds, privacy) {
 // Mini goal card for a draft: same bar / % / target text as a saved card, computed from today's portfolio.
 function GoalPreview({ draft, goalCtx, assetKinds, privacy }) {
   const kind = draft.kind || "net_worth";
-  const goal = kind === "debt_payoff" ? { ...draft, baseline: goalCtx.debtsById?.[draft.debt_id]?.value } : draft;
+  const goal = kind === "debt_payoff" && draft.baseline == null ? { ...draft, baseline: goalCtx.debtsById?.[draft.debt_id]?.value } : draft;
   const hasTarget = kind === "net_worth" ? Number(draft.target_amount) > 0
     : kind === "debt_payoff" ? Boolean(goalCtx.debtsById?.[draft.debt_id])
     : Number(draft.target_pct) > 0;
@@ -36,7 +36,7 @@ function GoalPreview({ draft, goalCtx, assetKinds, privacy }) {
       : kind === "debt_payoff" ? "Choose a debt to see its balance"
       : `${assetKinds?.[draft.asset_kind]?.name || draft.asset_kind} is ${result.current.toFixed(1)}% of assets today`
     : kind === "net_worth" ? `${fmtSGD(result.current, privacy)} of ${fmtSGD(result.target, privacy)}`
-    : goalTargetText(goal, result, assetKinds, privacy) + (kind === "debt_payoff" ? " · baseline set when you save" : "");
+    : goalTargetText(goal, result, assetKinds, privacy) + (kind === "debt_payoff" && draft.baseline == null ? " · baseline set when you save" : "");
   return (
     <div className={"pf-goal-card pf-goal-preview" + (hasTarget && result.done ? " done" : "")}>
       <div className="pf-goal-head">
@@ -186,25 +186,42 @@ function GoalsHero({ goals, resultsById, projectionsById, privacy }) {
   );
 }
 
-function GoalRow({ goal, result, projection, assetKinds, busy, editing, draft, setDraft, onEdit, onSave, onCancel, onDelete, privacy }) {
+function GoalRow({ goal, result, projection, assetKinds, goalCtx, busy, editing, draft, setDraft, onEdit, onSave, onCancel, onDelete, privacy }) {
   const kind = goal.kind || "net_worth";
   const kindTag = goalKindTag(kind);
   if (editing) {
     return (
       <div className="pf-goal-card editing">
-        <input aria-label="Goal name" value={draft.name} onChange={(e) => setDraft((cur) => ({ ...cur, name: e.target.value }))} />
-        {kind === "net_worth" && (
-          <input aria-label="Target amount (S$)" type="number" min="1" step="any" value={draft.target_amount}
-            onChange={(e) => setDraft((cur) => ({ ...cur, target_amount: e.target.value }))} style={{ width: 120 }} />
-        )}
-        {kind === "allocation" && (
-          <input aria-label="Target %" type="number" min="1" max="100" step="any" value={draft.target_pct}
-            onChange={(e) => setDraft((cur) => ({ ...cur, target_pct: e.target.value }))} style={{ width: 90 }} />
-        )}
-        <input aria-label="Target date" type="date" value={draft.target_date || ""}
-          onChange={(e) => setDraft((cur) => ({ ...cur, target_date: e.target.value }))} />
-        <button className="btn ghost" type="button" disabled={busy || !draft.name.trim()} onClick={onSave}>Save</button>
-        <button className="btn ghost" type="button" onClick={onCancel}>Cancel</button>
+        <div className="pf-add-grid">
+          <label>
+            <span>Goal name</span>
+            <input aria-label="Goal name" value={draft.name} onChange={(e) => setDraft((cur) => ({ ...cur, name: e.target.value }))} />
+          </label>
+          {kind === "net_worth" && (
+            <label>
+              <span>Target (S$)</span>
+              <input aria-label="Target amount (S$)" type="number" min="1" step="any" value={draft.target_amount}
+                onChange={(e) => setDraft((cur) => ({ ...cur, target_amount: e.target.value }))} />
+            </label>
+          )}
+          {kind === "allocation" && (
+            <label>
+              <span>Target %</span>
+              <input aria-label="Target %" type="number" min="1" max="100" step="any" value={draft.target_pct}
+                onChange={(e) => setDraft((cur) => ({ ...cur, target_pct: e.target.value }))} />
+            </label>
+          )}
+          <label>
+            <span>Target date <em>(optional)</em></span>
+            <input aria-label="Target date" type="date" value={draft.target_date || ""}
+              onChange={(e) => setDraft((cur) => ({ ...cur, target_date: e.target.value }))} />
+          </label>
+        </div>
+        <GoalPreview draft={{ ...goal, ...draft }} goalCtx={goalCtx} assetKinds={assetKinds} privacy={privacy} />
+        <div className="pf-add-actions">
+          <button className="btn ghost" type="button" onClick={onCancel}>Cancel</button>
+          <button className="btn primary" type="button" disabled={busy || !draft.name.trim()} onClick={onSave}>Save</button>
+        </div>
       </div>
     );
   }
@@ -352,7 +369,7 @@ function GoalsCard({ goals, resultsById, projectionsById, goalCtx, net, debtsByI
           <div className="pf-goal-grid">
             {ordered.map((goal) => (
               <GoalRow key={goal.id} goal={goal} result={resultsById[goal.id]} projection={projectionsById[goal.id]}
-                assetKinds={assetKinds} privacy={privacy} busy={busyId === `goal:${goal.id}`}
+                assetKinds={assetKinds} goalCtx={goalCtx} privacy={privacy} busy={busyId === `goal:${goal.id}`}
                 editing={editingId === goal.id} draft={draft} setDraft={setDraft}
                 onEdit={() => { setEditingId(goal.id); setDraft({ name: goal.name, target_amount: goal.target_amount, target_pct: goal.target_pct, target_date: goal.target_date }); }}
                 onSave={() => saveEdit(goal)} onCancel={() => setEditingId(null)}

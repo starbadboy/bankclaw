@@ -185,6 +185,16 @@ test("goal form uses the labelled add-grid idiom and previews the draft through 
   assert.match(goalsSource, /baseline set when you save/i);
   assert.match(goalsSource, /GoalForm[^]*goalCtx=\{goalCtx\}/); // GoalsCard passes the live context into the form
   assert.match(source, /<GoalsCard[^]*goalCtx=\{goalCtx\}/);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=2"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8"), /src="app\/page-goals\.jsx\?v=3"/);
   assert.match(fs.readFileSync(path.join(__dirname, "styles.css"), "utf8"), /\.pf-goal-form\b[^}]*auto-fit/);
+});
+
+test("goal edit mode uses labelled fields and previews the draft with a live bar", () => {
+  const editBranch = goalsSource.slice(goalsSource.indexOf("if (editing) {"), goalsSource.indexOf("const projectionText"));
+  assert.match(editBranch, /pf-add-grid/);
+  assert.match(editBranch, /<span>Goal name<\/span>/);
+  assert.match(editBranch, /<span>Target date/);
+  assert.match(editBranch, /<GoalPreview draft=\{[^}]*\.\.\.goal, \.\.\.draft/); // saved goal + draft fields drive the bar
+  assert.match(editBranch, /pf-add-actions/);
+  assert.match(goalsSource, /<GoalRow[^]*goalCtx=\{goalCtx\}/);
 });

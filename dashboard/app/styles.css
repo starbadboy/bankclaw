@@ -1331,7 +1331,8 @@ body {
 .pf-goal-card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 16px 18px; background: var(--paper); display: flex; flex-direction: column; gap: 10px; }
 .pf-goal-card.done { border-color: oklch(0.8 0.08 150 / 0.7); }
 .pf-goal-card.missing { opacity: 0.75; }
-.pf-goal-card.editing { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pf-goal-card.editing { grid-column: 1 / -1; background: var(--paper-2); gap: 0; }
+.pf-goal-card.editing .pf-add-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .pf-goal-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
 .pf-goal-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pf-goal-title strong { font-family: "Instrument Serif", serif; font-size: 18px; font-weight: 400; letter-spacing: 0.005em; }
