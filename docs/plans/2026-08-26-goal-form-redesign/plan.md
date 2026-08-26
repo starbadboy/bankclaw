@@ -6,7 +6,7 @@
 **Goal:** Add form + Edit mode on the Goals page adopt the Assets-tab labelled form idiom, with a live mini-card preview of the draft goal computed from today's portfolio.
 **Architecture:** UI-only change in `dashboard/app/page-goals.jsx` — `GoalForm` rebuilt on `.pf-add-row`/`.pf-add-grid`; a small `GoalPreview` renders `computeGoalProgress(draft, goalCtx)` with the existing bar/target-text pieces; `GoalRow`'s edit branch reuses the same labelled fields and preview. `GoalsCard` passes `goalCtx` (already computed in `PortfolioPage`) down. Small CSS block in `styles.css`; cache-busters in `index.html`.
 **Complexity Path:** Simplified TDD — no browser E2E harness in this repo (`tests/e2e` is Streamlit-mocked).
-**Status:** In progress
+**Status:** Complete
 **Branch:** `feat/goal-form-redesign` (created from `main` at 0e1a00c)
 
 ## Architecture Review
@@ -61,9 +61,9 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 - **Static-file freshness** — server serves `dashboard/` from disk; no restart needed, but cache-busters must bump or the browser keeps v1.
 
 ## Success Criteria
-- [ ] AC1–AC8 demonstrated (tests + screenshots)
-- [ ] All JS tests green, esbuild clean, Python fast loop unchanged
-- [ ] Tri-axis review + fix-pass verification recorded
+- [x] AC1–AC8 demonstrated (tests + screenshots; Spec axis: 8/8 Met)
+- [x] All JS tests green (63), esbuild clean, Python fast loop 197 passed
+- [x] Tri-axis review + two fix-pass verifications recorded
 - [x] Seeded demo data cleaned up
 
 ## Progress Log
@@ -79,6 +79,8 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 | 2026-08-26 | Fix-pass verification #1 (Opus 5) | Done | **New problems** — CRITICAL debt-draft crash introduced by fix #1; see Evidence |
 | 2026-08-26 | Fix pass #2 | Done | null-safe preview text, create guard; a9c4bbd |
 | 2026-08-26 | cleanup | Done | demo user goalform-demo@local.test: 3 assets, 1 debt, 3 goals deleted via API (all 200, 0 remaining); ai_goal_suggestions cache doc (1) and the auto-created default `profiles` doc (1) deleted via webapp.db; collection scan shows 0 docs left for the user |
+| 2026-08-26 | Fix-pass verification #2 (Opus 5) | Done | **Clean with nits** — 3/3 addressed; runtime probe 104 renders, 0 throws (pre-fix threw on every debt draft) |
+| 2026-08-26 | Complete | Done | branch feat/goal-form-redesign; merge/PR on user instruction |
 
 ## Evidence
 
@@ -117,3 +119,9 @@ Reused: `computeGoalProgress`, `goalCtx`, `goalTargetText`, `.pf-goal-bar`/`.pf-
 - Live: kind → "Pay off a debt" with no debt renders (`goal-form-debt-empty.png`: "Choose a debt to see its balance", muted "Enter a target", Add disabled); name + amount 0 → Add disabled, amount 1000 → enabled. Console 0 errors.
 - Gates: JS 4/30/5/23/1 pass (data also NY TZ); esbuild 0 errors.
 - Declined nits (recorded): version assertion stays a "not v=1" tripwire (a floor needs a hand edit every bump — the reviewer's own earlier objection); `aria-label="Goal kind"` kept (harmless, matches visible text, pinned by an older test); name cleared on kind switch stays (typed names rarely fit another kind).
+
+### Fix-pass verification #2 (Opus 5) — final
+- **Clean with nits.** All three round-2 items Addressed; verifier transpiled both revisions and rendered `GoalPreview` over 104 kind × draft × ctx × privacy combinations: pre-fix threw on every `debt_payoff` draft whose `debt_id` misses `debtsById` (also stale ids and edits of a removed debt), post-fix 0 throws. Create/edit guards agree on ``"" / "0" / "-5" / " " / "abc" / "1e-9" / "5"``. `fmtSGD(null)` is safe ("NaN"/"••••", never throws).
+- Nit (recorded, not fixed): `?? 0` guards a string that is built and discarded for other kinds — a `switch` would compute one branch; left as is with the intent documented in the test comment.
+- Gates: 63 JS tests pass; esbuild exit 0.
+- **Follow-ups (not done):** executed tests for `GoalPreview` derivation (would need a DOM/transpile harness or moving the derivation into `data.js`); `ai_coach.py` client timeout and `page-portfolio.jsx` lift-outs carried over from the previous goals plan.
