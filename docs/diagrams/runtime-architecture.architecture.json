@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Bankclaw runtime architecture",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1180,
+      575
+    ],
+    "repository": {
+      "url": "https://github.com/starbadboy/bankclaw",
+      "revision": "0efd7f04346d3cd1c9f5a524ce782cea626f0e73"
+    }
+  },
+  "components": [
+    {
+      "id": "cdn",
+      "type": "external",
+      "label": "Script CDNs",
+      "sublabel": "unpkg · Google Fonts · GSI",
+      "pos": [
+        40,
+        50
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "dashboard/index.html",
+          "line": 10,
+          "end_line": 19
+        }
+      ]
+    },
+    {
+      "id": "google",
+      "type": "external",
+      "label": "Google Identity",
+      "sublabel": "ID-token verification",
+      "pos": [
+        40,
+        470
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/api.py",
+          "line": 139,
+          "end_line": 185,
+          "label": "verify_oauth2_token"
+        }
+      ]
+    },
+    {
+      "id": "deepseek",
+      "type": "external",
+      "label": "DeepSeek API",
+      "sublabel": "OpenAI-compatible chat",
+      "pos": [
+        350,
+        50
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/deepseek_config.py",
+          "line": 7
+        },
+        {
+          "path": "webapp/ai_coach.py",
+          "line": 172,
+          "label": "_call_llm"
+        }
+      ]
+    },
+    {
+      "id": "yfinance",
+      "type": "external",
+      "label": "Yahoo Finance",
+      "sublabel": "via yfinance",
+      "pos": [
+        660,
+        50
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/market_data.py",
+          "line": 80,
+          "label": "get_market_history"
+        }
+      ]
+    },
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "React dashboard",
+      "sublabel": "dashboard/app · Babel",
+      "pos": [
+        40,
+        260
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "dashboard/app/api.js",
+          "line": 22,
+          "label": "_fetch"
+        },
+        {
+          "path": "dashboard/app/shell.jsx"
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "FastAPI app",
+      "sublabel": "webapp.api:app · uvicorn",
+      "pos": [
+        350,
+        260
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/api.py",
+          "line": 77
+        },
+        {
+          "path": "webapp/api.py",
+          "line": 733,
+          "label": "/api/import"
+        }
+      ]
+    },
+    {
+      "id": "repos",
+      "type": "backend",
+      "label": "Repositories",
+      "sublabel": "transactions · portfolio",
+      "pos": [
+        660,
+        260
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/repository.py"
+        },
+        {
+          "path": "webapp/portfolio_repository.py"
+        },
+        {
+          "path": "webapp/profile_repository.py"
+        }
+      ]
+    },
+    {
+      "id": "mongo",
+      "type": "database",
+      "label": "MongoDB",
+      "sublabel": "optional · MONGODB_URL",
+      "brand": "mongodb",
+      "pos": [
+        970,
+        260
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/db.py",
+          "line": 16
+        },
+        {
+          "path": "docker-compose.yaml",
+          "line": 15
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "security",
+      "label": "Auth",
+      "sublabel": "login · Google · bearer guard",
+      "pos": [
+        350,
+        470
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/auth.py",
+          "line": 36
+        },
+        {
+          "path": "webapp/api.py",
+          "line": 105,
+          "label": "/api/auth/login"
+        },
+        {
+          "path": "webapp/api.py",
+          "line": 139,
+          "label": "/api/auth/google"
+        }
+      ]
+    },
+    {
+      "id": "processing",
+      "type": "backend",
+      "label": "PDF pipeline",
+      "sublabel": "monopoly-core · OCR",
+      "pos": [
+        660,
+        470
+      ],
+      "size": [
+        160,
+        64
+      ],
+      "sources": [
+        {
+          "path": "webapp/processing.py",
+          "line": 38,
+          "label": "process_pdf"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Third-party internet services",
+      "wraps": [
+        "cdn",
+        "deepseek",
+        "yfinance"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Untrusted client",
+      "wraps": [
+        "browser"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Server process · Docker / Railway",
+      "wraps": [
+        "api",
+        "repos",
+        "auth",
+        "processing"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Persistence",
+      "wraps": [
+        "mongo"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Identity provider",
+      "wraps": [
+        "google"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-cdn",
+      "from": "browser",
+      "to": "cdn",
+      "label": "scripts, fonts",
+      "variant": "dashed",
+      "labelAt": [
+        120,
+        170
+      ]
+    },
+    {
+      "id": "browser-api",
+      "from": "browser",
+      "to": "api",
+      "label": "HTTPS /api/* + Bearer",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-auth",
+      "from": "api",
+      "to": "auth",
+      "label": "Depends(_current_user)",
+      "variant": "security",
+      "labelAt": [
+        430,
+        360
+      ]
+    },
+    {
+      "id": "api-processing",
+      "from": "api",
+      "to": "processing",
+      "label": "PDF bytes (to_thread)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-repos",
+      "from": "api",
+      "to": "repos",
+      "label": "upsert / query",
+      "variant": "emphasis"
+    },
+    {
+      "id": "repos-mongo",
+      "from": "repos",
+      "to": "mongo",
+      "label": "pymongo",
+      "variant": "emphasis"
+    },
+    {
+      "id": "auth-google",
+      "from": "auth",
+      "to": "google",
+      "label": "verify ID token"
+    },
+    {
+      "id": "api-deepseek",
+      "from": "api",
+      "to": "deepseek",
+      "label": "categorize · coach · goals",
+      "variant": "dashed",
+      "labelAt": [
+        430,
+        150
+      ]
+    },
+    {
+      "id": "api-yfinance",
+      "from": "api",
+      "to": "yfinance",
+      "label": "daily closes",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelSegment": 1
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Primary path — import a statement",
+      "items": [
+        "POST /api/import with Bearer token; uploads read on the event loop",
+        "≤2 PDFs parsed concurrently via asyncio.to_thread (monopoly-core)",
+        "BankDetector → 18+ banks, else GenericBank + warning; OCR if no text layer",
+        "Optional DeepSeek categorization; upsert keyed user+date+description+amount+bank"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust boundaries",
+      "items": [
+        "All /api/* routes need the HMAC token except login, google, public-config, health",
+        "AUTH_TOKEN_SECRET falls back to a dev value when unset",
+        "Login is demo mode (any credentials) when no user store is reachable",
+        "SPA fallback stays inside dashboard/; index is no-cache with mtime asset version"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Dependencies & deployment",
+      "items": [
+        "MONGODB_URL optional — persistence degrades gracefully; compose adds mongo:7.0",
+        "DEEPSEEK_API_KEY / DEEPSEEK_MODEL (OpenAI SDK); GOOGLE_CLIENT_ID; yfinance keyless",
+        "Browser loads React 18 + Babel from unpkg (SRI) and Google Fonts",
+        "python:3.12-slim image + poppler/ocrmypdf/tesseract; Railway checks /api/health",
+        "Legacy Streamlit UI + Tauri desktop wrapper are in the repo, outside this runtime"
+      ]
+    }
+  ]
+}
