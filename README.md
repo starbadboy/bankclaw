@@ -117,14 +117,16 @@ Set the following environment variables to enable AI categorisation and MongoDB 
 
 | Variable | Required | Description |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | Yes | DeepSeek API key — get one at [platform.deepseek.com](https://platform.deepseek.com) |
-| `DEEPSEEK_MODEL` | No | DeepSeek model name (default: `deepseek-v4-pro`; set `deepseek-v4-flash` for lower-cost non-thinking mode) |
+| `TYPESAFE_API_KEY` | Yes | TypeSafe API key for Jev category detection — see [typesafe.ai](https://typesafe.ai) |
+| `TYPESAFE_DEFAULT_MODEL` | No | Jev model name (default: `jev-latest`) |
+| `DEEPSEEK_API_KEY` | No | DeepSeek API key for AI Coach and goal suggestions |
+| `DEEPSEEK_MODEL` | No | Coach/advisor model name (default: `deepseek-v4-pro`) |
 | `MONGODB_URL` | Yes | MongoDB Atlas connection string (e.g. `mongodb+srv://user:***@cluster.mongodb.net/`) |
 | `MONGODB_DB_NAME` | No | Database name (default: `bankclaw`) |
 
 ```sh
-export DEEPSEEK_API_KEY="***"
-export DEEPSEEK_MODEL="deepseek-v4-pro"  # optional
+export TYPESAFE_API_KEY="***"
+export TYPESAFE_DEFAULT_MODEL="jev-latest"  # optional
 export MONGODB_URL="mongodb+srv://user:***@cluster.mongodb.net/"
 export MONGODB_DB_NAME="bankclaw"  # optional
 ```
@@ -152,6 +154,6 @@ Create a `.env` file in the project root with the required variables (see MongoD
 # Features
 - Supports uploading multiple bank statements
 - Allows unlocking of PDFs using user-provided credentials via the frontend
-- AI-powered transaction categorisation via DeepSeek (optional)
+- AI-powered transaction categorisation via Jev using typed category choices (optional)
 - MongoDB Atlas storage with duplicate-safe upserts (optional)
 - Transaction history page with date-range filtering and CSV export

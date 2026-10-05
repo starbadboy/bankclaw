@@ -13,6 +13,7 @@ dependencies = [
     "monopoly-core==0.19.6",
     "pymongo>=4.9.0",
     "openai>=1.0.0",
+    "typesafe-sdk>=0.7.2,<1.0",
     "python-dotenv>=1.2.2",
     "streamlit-plotly-events>=0.0.6",
     "fastapi>=0.115.0",

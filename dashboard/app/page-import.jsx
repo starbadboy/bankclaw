@@ -75,7 +75,7 @@ function ImportPage({ privacy, onNav, onImportDone, profiles = [], currentProfil
       <h1 className="page-title"><i>Import</i> statements.</h1>
       <div className="page-sub">
         Drop any bank PDF — Bankclaw reads 18 banks, unlocks password-protected files, runs OCR
-        on scanned statements, and lets an LLM categorise every line.
+        on scanned statements, and lets Jev categorise every line.
       </div>
 
       <div style={{ height: 28 }} />
