@@ -1,11 +1,22 @@
-import pandas as pd
-import pytest
 import runpy
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
+import pytest
+import streamlit as st
+
 from webapp.visualizations_helpers import compute_monthly_cash_flow, compute_category_expenses
+
+
+@pytest.fixture(autouse=True)
+def isolated_visualization_services(monkeypatch):
+    """Keep category lookups local and restore Streamlit mocks after each test."""
+    monkeypatch.setattr("webapp.repository.get_custom_categories", MagicMock(return_value=pd.DataFrame()))
+    monkeypatch.setattr(st, "session_state", {})
+    for name in ("button", "data_editor", "plotly_chart"):
+        monkeypatch.setattr(st, name, getattr(st, name))
 
 
 def make_df():

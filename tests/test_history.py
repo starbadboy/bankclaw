@@ -4,6 +4,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
+import streamlit as st
+
+
+@pytest.fixture(autouse=True)
+def isolated_history_services(monkeypatch):
+    """Page tests use an empty category store and fresh state, never MongoDB."""
+    monkeypatch.setattr(st, "session_state", {})
+    monkeypatch.setattr("webapp.repository.get_custom_categories", MagicMock(return_value=pd.DataFrame()))
+    monkeypatch.setattr("webapp.repository.save_category_memory", MagicMock(return_value=0))
 
 
 def test_history_page_renders_workspace_header_and_filter_shell():
