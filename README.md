@@ -111,25 +111,33 @@ or store them in an .env file in the project root:
 echo 'PDF_PASSWORDS=["foo"]' > .env
 ```
 
-## MongoDB + AI Categorisation
+## Jev Category Detection + MongoDB
 
-Set the following environment variables to enable AI categorisation and MongoDB storage:
+Automatic category detection uses [Jev by TypeSafe](https://typesafe.ai). Configure the API key on the machine or server running Bankclaw. MongoDB stores transactions and remembered category corrections.
 
 | Variable | Required | Description |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | Yes | DeepSeek API key — get one at [platform.deepseek.com](https://platform.deepseek.com) |
-| `DEEPSEEK_MODEL` | No | DeepSeek model name (default: `deepseek-v4-pro`; set `deepseek-v4-flash` for lower-cost non-thinking mode) |
-| `MONGODB_URL` | Yes | MongoDB Atlas connection string (e.g. `mongodb+srv://user:***@cluster.mongodb.net/`) |
+| `TYPESAFE_API_KEY` | For AI categories | TypeSafe API key for Jev category detection — see [typesafe.ai](https://typesafe.ai) |
+| `TYPESAFE_DEFAULT_MODEL` | No | Jev model name (default: `jev-latest`) |
+| `DEEPSEEK_API_KEY` | No | DeepSeek API key for AI Coach and goal suggestions |
+| `DEEPSEEK_MODEL` | No | Coach/advisor model name (default: `deepseek-v4-pro`) |
+| `MONGODB_URL` | For storage | MongoDB Atlas connection string (e.g. `mongodb+srv://user:***@cluster.mongodb.net/`) |
 | `MONGODB_DB_NAME` | No | Database name (default: `bankclaw`) |
 
 ```sh
-export DEEPSEEK_API_KEY="***"
-export DEEPSEEK_MODEL="deepseek-v4-pro"  # optional
+export TYPESAFE_API_KEY="***"
+export TYPESAFE_DEFAULT_MODEL="jev-latest"  # optional
 export MONGODB_URL="mongodb+srv://user:***@cluster.mongodb.net/"
 export MONGODB_DB_NAME="bankclaw"  # optional
 ```
 
-When both variables are set, a **"Categorise & Save to MongoDB"** button appears after processing PDFs. A **"3 History"** page lets you browse and filter saved transactions by date range.
+For local development, add these variables to your existing `.env` file, using `.env.example` as a reference. Keep API keys out of Git. For hosted deployments, set them in your hosting provider's environment variables and restart the app.
+
+The dashboard categorises transactions automatically during PDF import. Saved category matches take priority; unmatched descriptions are sent to Jev in batches with one typed `Choice` question per transaction. The choices use the caller's allowed categories, including `Other`. Missing or invalid category answers become `Other`, and transaction order is preserved.
+
+If Jev is unavailable or its key is missing, dashboard imports still return the extracted transactions with `Other` categories. Review the results before relying on them. In Streamlit, use **Generate AI Categories**, review and edit the suggestions, then save to MongoDB. The **3 History** page lets you browse saved transactions.
+
+AI Coach and goal suggestions use DeepSeek separately. Set `DEEPSEEK_API_KEY` to enable those features; it is not used for category detection.
 
 ## Development
 
@@ -139,7 +147,11 @@ When both variables are set, a **"Categorise & Save to MongoDB"** button appears
 # Quick start (kills existing processes and starts fresh)
 ./start.sh
 
-# Or manually with uv
+# Or start the dashboard manually with uv
+uv sync
+uv run uvicorn webapp.api:app --host 127.0.0.1 --port 8501
+
+# For the Streamlit interface instead
 uv run streamlit run webapp/app.py
 ```
 
@@ -147,11 +159,11 @@ The app will be available at **http://localhost:8501**
 
 ### Environment Setup
 
-Create a `.env` file in the project root with the required variables (see MongoDB + AI Categorisation section above).
+Create or update `.env` in the project root with the variables described in **Jev Category Detection + MongoDB** above.
 
 # Features
 - Supports uploading multiple bank statements
 - Allows unlocking of PDFs using user-provided credentials via the frontend
-- AI-powered transaction categorisation via DeepSeek (optional)
+- AI-powered transaction categorisation via Jev using typed category choices (optional)
 - MongoDB Atlas storage with duplicate-safe upserts (optional)
 - Transaction history page with date-range filtering and CSV export

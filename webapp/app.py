@@ -387,7 +387,7 @@ def _show_categorise_button(df: pd.DataFrame) -> None:
     st.caption("Step 2: Let AI suggest categories for each transaction before you review.")
     if st.button("🤖 Generate AI Categories", type="primary"):
         try:
-            with st.spinner("Asking DeepSeek to categorise your transactions…"):
+            with st.spinner("Asking Jev to categorise your transactions…"):
                 categorized = categorize_transactions(df)
             st.session_state["categorized_df"] = categorized
             st.rerun()
