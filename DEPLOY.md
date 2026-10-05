@@ -59,10 +59,27 @@ After the first successful deploy:
 
 ```bash
 curl https://<your-app>.up.railway.app/api/health
-# → {"status":"ok","mongo":"enabled"}
+# → {"status":"ok","mongo":"enabled","version":"0.10.4"}
 ```
 
 Open the root URL in a browser — the React dashboard should load.
+
+## Dashboard monitoring
+
+The Bankclaw smoke-test workflow runs an isolated sign-in and PDF-import browser test on pull requests,
+main pushes, and hourly. It uses synthetic credentials and mocked Jev responses, with database access disabled.
+
+To enable live checks, add the GitHub repository variable `BANKCLAW_SMOKE_URL` under
+**Settings → Secrets and variables → Actions → Variables**, using your dashboard root URL.
+Hourly checks then verify `/api/health`, dashboard rendering, and the sign-in form without signing in or importing data.
+Until the variable is set, the workflow reports that live monitoring is unconfigured.
+
+For a manual deployment/version check:
+
+```bash
+uv run --group browser python .github/scripts/smoke_test.py \
+  --app-url https://<your-app>.up.railway.app --expected-version 0.10.4
+```
 
 ## Troubleshooting
 

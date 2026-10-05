@@ -183,7 +183,7 @@ function ImportPage({ privacy, onNav, onImportDone, profiles = [], currentProfil
                     <div style={{ fontFamily: "Instrument Serif, serif", fontSize: 18 }}>
                       {stage === "done"
                         ? `${result?.transactions?.length ?? 0} transactions imported`
-                        : "DeepSeek is thinking…"}
+                        : "Jev is categorising…"}
                     </div>
                   </div>
                   <div className="mono" style={{ fontSize: 12, color: "var(--ink-3)" }}>

@@ -36,11 +36,13 @@ Supported banks:
 | Maybank                                | ✅                 | ✅                   |
 | OCBC                                   | ✅                 | ✅                   |
 | Royal Bank of Canada (RBC)             | ✅                 | ✅                   |
+| Schwab Bank                            | N/A                | ✅                   |
 | Scotiabank                             | ✅                 | ✅                   |
 | Standard Chartered                     | ✅                 | ❌                   |
 | TD Canada Trust                        | ✅                 | ✅                   |
 | Trust                                  | ✅                 | ❌                   |
 | UOB                                    | ✅                 | ✅                   |
+| US Bank                                | ✅                 | ❌                   |
 | Zürcher Kantonalbank                   | ❌                 | ✅                   |
 
 # Installation
@@ -160,6 +162,32 @@ The app will be available at **http://localhost:8501**
 ### Environment Setup
 
 Create or update `.env` in the project root with the variables described in **Jev Category Detection + MongoDB** above.
+
+### Parser updates and validation
+
+Bankclaw uses `monopoly-core==0.23.1`, including upstream parsing improvements and support for Schwab and US Bank.
+Dependabot checks for parser updates daily. After updating the parser, regenerate the committed deployment files:
+
+```bash
+uv lock
+uv sync --group dev
+uv build --sdist
+.github/hooks/include_webapp_in_requirements.sh
+uv run python .github/scripts/check_release_artifacts.py
+```
+
+CI rejects stale source packages, dependency exports, and packages containing `.env` files.
+Run the isolated browser import test locally with:
+
+```bash
+uv sync --group dev --group browser
+uv run --group browser playwright install chromium
+BANKCLAW_RUN_BROWSER_TESTS=1 uv run --group browser pytest tests/e2e/test_dashboard_import_browser.py -q
+```
+
+The browser test signs in, imports the example PDF, verifies Jev categories, and opens the ledger.
+It uses a synthetic account and mocked Jev responses with database access disabled.
+See [deployment monitoring](DEPLOY.md#dashboard-monitoring) to enable checks against your deployed dashboard.
 
 # Features
 - Supports uploading multiple bank statements

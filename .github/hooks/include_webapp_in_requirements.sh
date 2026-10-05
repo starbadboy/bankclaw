@@ -1,16 +1,17 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
 REQUIREMENTS_FILE="requirements.txt"
-VERSION=$(poetry version --short)
+VERSION=$(uv version --short)
 TAR_FILE="dist/statement_sensei-$VERSION.tar.gz"
-HASH=$(sha256sum "$TAR_FILE" | awk '{ print $1 }')
+HASH=$(python3 -c 'import hashlib, sys; from pathlib import Path; print(hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest())' "$TAR_FILE")
 
 # Export dependencies using uv (this adds -e . if project is local)
-uv export --output-file "$REQUIREMENTS_FILE" --all-extras
+uv export --frozen --output-file "$REQUIREMENTS_FILE" --all-extras --no-emit-project
 
 # Remove "-e ." or any editable install lines (macOS vs Linux compatible)
 # Detect OS for sed inline flag
-if [[ "$OSTYPE" == "darwin"* ]]; then
+if [[ "${OSTYPE:-}" == "darwin"* ]]; then
   sed -i '' '/^-e[[:space:]]\.\s*$/d' "$REQUIREMENTS_FILE"
 else
   sed -i '/^-e[[:space:]]\.\s*$/d' "$REQUIREMENTS_FILE"

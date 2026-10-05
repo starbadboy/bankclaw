@@ -21,12 +21,17 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up Python
-        run: uv python install
+        run: uv python install 3.12
 
       - name: Install StatementSensei dependencies
         run: |
-          uv venv
-          uv sync --group dev
+          uv venv --python 3.12
+          uv sync --frozen --group dev
+
+      - name: Check source package and dependency consistency
+        run: |
+          uv lock --check
+          uv run --frozen python .github/scripts/check_release_artifacts.py
 
       - name: Run CI
         run: |

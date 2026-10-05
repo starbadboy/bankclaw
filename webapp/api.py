@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import tempfile
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
@@ -865,7 +866,11 @@ async def export_csv(
 # ---------------------------------------------------------------------------
 @app.get("/api/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "mongo": "enabled" if _MONGO else "disabled"}
+    try:
+        app_version = version("statement-sensei")
+    except PackageNotFoundError:
+        app_version = "unknown"
+    return {"status": "ok", "mongo": "enabled" if _MONGO else "disabled", "version": app_version}
 
 
 # ---------------------------------------------------------------------------

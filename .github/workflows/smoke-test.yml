@@ -1,0 +1,56 @@
+name: Bankclaw smoke test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: daaku/gh-action-apt-install@v4
+        with:
+          packages: build-essential libpoppler-cpp-dev pkg-config
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen --group dev --group browser
+      - run: uv run --frozen --group browser playwright install --with-deps chromium
+      - name: Test authenticated PDF import against an isolated app
+        env:
+          BANKCLAW_RUN_BROWSER_TESTS: "1"
+        run: uv run --frozen --group browser pytest tests/e2e/test_dashboard_import_browser.py -q
+
+  deployed-dashboard:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Report live monitoring configuration
+        env:
+          APP_URL: ${{ vars.BANKCLAW_SMOKE_URL }}
+        run: |
+          if [ -z "$APP_URL" ]; then
+            echo "Set repository variable BANKCLAW_SMOKE_URL to enable live dashboard checks." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/checkout@v4
+        if: vars.BANKCLAW_SMOKE_URL != ''
+      - uses: astral-sh/setup-uv@v5
+        if: vars.BANKCLAW_SMOKE_URL != ''
+      - name: Install browser
+        if: vars.BANKCLAW_SMOKE_URL != ''
+        run: uv run --no-project --with playwright playwright install --with-deps chromium
+      - name: Check the deployed dashboard without modifying data
+        if: vars.BANKCLAW_SMOKE_URL != ''
+        env:
+          APP_URL: ${{ vars.BANKCLAW_SMOKE_URL }}
+        run: uv run --no-project --with playwright python .github/scripts/smoke_test.py --app-url "$APP_URL"

@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # Regenerate requirements.txt and dist/ before merging each parser upgrade.
+  # CI's package consistency check enforces this without executing PR code
+  # with write permissions.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    allow:
+      - dependency-name: "monopoly-core"
+    commit-message:
+      prefix: "build"
+      include: "scope"

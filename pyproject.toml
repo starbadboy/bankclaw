@@ -10,7 +10,7 @@ dependencies = [
     "plotly>=6.1.2",
     "pdftotext>=3.0.0",
     "pymupdf>=1.26.0",
-    "monopoly-core==0.19.6",
+    "monopoly-core==0.23.1",
     "pymongo>=4.9.0",
     "openai>=1.0.0",
     "typesafe-sdk>=0.7.2,<1.0",
@@ -54,6 +54,10 @@ includes = ["webapp"]
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
+    "packaging>=24.0",
+]
+browser = [
+    "playwright>=1.50,<2.0",
 ]
 build = [
     "git-cliff>=2.8.0",
