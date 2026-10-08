@@ -32,6 +32,40 @@ function filterByRange(txns, rangeId) {
   return txns; // "all"
 }
 
+// Build daily buckets for the same period used by the category breakdown.
+function overviewFlow(txns, rangeId) {
+  const now = new Date();
+  let start;
+  let end;
+  if (rangeId === "all") {
+    const dates = txns.map((t) => new Date(t.date)).filter((d) => !Number.isNaN(d.getTime()));
+    if (!dates.length) return [];
+    start = new Date(Math.min(...dates));
+    end = new Date(Math.max(...dates));
+  } else {
+    const months = rangeId === "last_3m" ? 3 : rangeId === "last_6m" ? 6 : 1;
+    const offset = rangeId === "last_month" ? -1 : 0;
+    start = new Date(now.getFullYear(), now.getMonth() + offset - (months - 1), 1);
+    end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  }
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  const buckets = new Map();
+  for (const day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
+    buckets.set(day.getTime(), { date: new Date(day), income: 0, spend: 0 });
+  }
+  txns.forEach((t) => {
+    const day = new Date(t.date);
+    day.setHours(0, 0, 0, 0);
+    const bucket = buckets.get(day.getTime());
+    if (bucket) {
+      if (t.amount > 0) bucket.income += t.amount;
+      else bucket.spend += -t.amount;
+    }
+  });
+  return [...buckets.values()];
+}
+
 function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
   const [catRange, setCatRange] = useStateOV("last_month");
   const [showRangeMenu, setShowRangeMenu] = useStateOV(false);
@@ -42,7 +76,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
     [transactions],
   );
   const totals = useMemoOV(() => totalsFor(transactions), [transactions]);
-  const flow = useMemoOV(() => lastMonthFlow(transactions), [transactions]);
+  const flow = useMemoOV(() => overviewFlow(catTxns, catRange), [catTxns, catRange]);
   const byCat = useMemoOV(() => spendByCategory(catTxns).slice(0, 6), [catTxns]);
   const topSpend = byCat[0]?.total || 1;
   const activeRange = _OV_RANGES.find((r) => r.id === catRange);
@@ -109,7 +143,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div className="hero-label">Last month cash flow</div>
+              <div className="hero-label">{activeRange.label} cash flow</div>
               <div className="legend" style={{ marginTop: 8, justifyContent: "flex-end" }}>
                 <span><span className="sw" style={{ background: "oklch(0.48 0.09 150)" }}></span>In</span>
                 <span><span className="sw" style={{ background: "oklch(0.48 0.11 35)" }}></span>Out</span>
