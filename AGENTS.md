@@ -60,6 +60,8 @@ Statement Sensei converts bank statement PDFs to CSVs using the [monopoly](https
 
 ## Agent Working Rules
 
+- When connecting an overview cash-flow chart to a period selector, apply the same period to Money in, Money out, and Net, and test their displayed values for every selector option.
+
 - Before merging or pushing changes to main, run the complete CI test suite and resolve failures, including pre-existing failures. Focused passing tests alone do not establish that CI will pass.
 
 1. Before writing any code, first describe the solution and wait for user approval. If requirements are unclear, ask clarifying questions before writing any code.

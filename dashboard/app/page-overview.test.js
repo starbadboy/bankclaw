@@ -22,14 +22,19 @@ function overview(range, transactions, now = "2026-04-15T12:00:00") {
   const tree = context.window.OverviewPage({ transactions, privacy: false });
   let flow;
   let label;
+  const amounts = {};
   function visit(node) {
     if (!React.isValidElement(node)) return;
     if (node.type === context.Sparkline) flow = node.props.data;
     if (node.props.className === "hero-label" && String(node.props.children).includes("cash flow")) label = React.Children.toArray(node.props.children).join("");
+    const children = React.Children.toArray(node.props.children);
+    if (children[0]?.props?.className === "tag" && ["Money in", "Money out", "Net"].includes(children[0].props.children)) {
+      amounts[children[0].props.children] = children[1].props.children;
+    }
     React.Children.forEach(node.props.children, visit);
   }
   visit(tree);
-  return { flow, label };
+  return { flow, label, amounts, format: context.fmtSGD };
 }
 
 const transactions = [
@@ -53,7 +58,20 @@ for (const [range, label, income, spend, first, last] of [
     assert.equal(date(result.flow[0].date), first);
     assert.equal(date(result.flow.at(-1).date), last);
   });
+  test(`overview cash-flow totals follow ${label}`, () => {
+    const result = overview(range, transactions);
+    assert.deepEqual(result.amounts, {
+      "Money in": result.format(income, false),
+      "Money out": result.format(-spend, false),
+      Net: result.format(income - spend, false),
+    });
+  });
 }
+
+test("cash-flow totals are zero when the selected period has no transactions", () => {
+  const result = overview("last_month", transactions.filter((t) => !t.date.startsWith("2026-03")));
+  assert.deepEqual(result.amounts, { "Money in": result.format(0), "Money out": result.format(0), Net: result.format(0) });
+});
 
 test("overview graph handles empty periods and all-time data", () => {
   assert.equal(overview("all", []).flow.length, 0);

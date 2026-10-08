@@ -76,6 +76,7 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
     [transactions],
   );
   const totals = useMemoOV(() => totalsFor(transactions), [transactions]);
+  const periodTotals = useMemoOV(() => totalsFor(catTxns), [catTxns]);
   const flow = useMemoOV(() => overviewFlow(catTxns, catRange), [catTxns, catRange]);
   const byCat = useMemoOV(() => spendByCategory(catTxns).slice(0, 6), [catTxns]);
   const topSpend = byCat[0]?.total || 1;
@@ -159,19 +160,19 @@ function OverviewPage({ transactions, privacy, onNav, onOpenTx }) {
             <div>
               <div className="tag">Money in</div>
               <div className="display tnum" style={{ fontSize: 26, marginTop: 2, color: "var(--credit)" }}>
-                {fmtSGD(totals.income, privacy)}
+                {fmtSGD(periodTotals.income, privacy)}
               </div>
             </div>
             <div>
               <div className="tag">Money out</div>
               <div className="display tnum" style={{ fontSize: 26, marginTop: 2, color: "var(--debit)" }}>
-                {fmtSGD(-totals.spend, privacy)}
+                {fmtSGD(-periodTotals.spend, privacy)}
               </div>
             </div>
             <div>
               <div className="tag">Net</div>
               <div className="display tnum" style={{ fontSize: 26, marginTop: 2 }}>
-                {fmtSGD(totals.net, privacy)}
+                {fmtSGD(periodTotals.net, privacy)}
               </div>
             </div>
           </div>
