@@ -469,6 +469,22 @@ async def get_portfolio_goals(user: str = Depends(_current_user)) -> dict:
     return {"goals": list_goals(user)}
 
 
+def _portfolio_snapshot(user: str) -> dict:
+    """Assets, debts, valuation histories, goals and custom kind names — the input of the AI aggregates."""
+    portfolio = list_portfolio(user)
+    histories = {
+        f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
+        for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
+        for item in items
+    }
+    return {
+        **portfolio,
+        "histories": histories,
+        "goals": list_goals(user),
+        "asset_kind_names": {t["id"]: t["name"] for t in list_asset_types(user)},
+    }
+
+
 @app.post("/api/portfolio/goals/suggestions")
 async def get_goal_suggestions(request: Request, user: str = Depends(_current_user)) -> dict:
     """AI goal suggestions from portfolio aggregates. Cached per user; ``force_refresh`` / ``dismiss`` in the body."""
@@ -484,23 +500,9 @@ async def get_goal_suggestions(request: Request, user: str = Depends(_current_us
         raise HTTPException(status_code=400, detail="dismiss must be a suggestion id")
     from webapp.goal_advisor import AdvisorBusy, AdvisorNotConfigured, get_suggestions  # noqa: PLC0415 — lazy, like ai_coach
 
-    def build_portfolio() -> dict:  # only runs when a generation is needed
-        portfolio = list_portfolio(user)
-        histories = {
-            f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
-            for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
-            for item in items
-        }
-        return {
-            **portfolio,
-            "histories": histories,
-            "goals": list_goals(user),
-            "asset_kind_names": {t["id"]: t["name"] for t in list_asset_types(user)},
-        }
-
     try:
         return await asyncio.to_thread(
-            get_suggestions, user, build_portfolio, force_refresh=bool(body.get("force_refresh")), dismiss=raw_dismiss or None
+            get_suggestions, user, lambda: _portfolio_snapshot(user), force_refresh=bool(body.get("force_refresh")), dismiss=raw_dismiss or None
         )
     except AdvisorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
