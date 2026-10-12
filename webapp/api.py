@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
-from webapp.auth import auth_secret, create_auth_token, verify_auth_token
+from webapp.auth import auth_secret, create_auth_token, hash_password, verify_auth_token
 from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
 from webapp.market_data import RANGES, TICKER_PATTERN, MarketDataError, get_market_history
 from webapp.dashboard_assets import render_index
@@ -75,6 +75,9 @@ except Exception:  # noqa: BLE001
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
+_DUMMY_PASSWORD_HASH = hash_password("timing-equaliser-not-a-real-password")
+
+
 def check_auth_config() -> None:
     """Refuse to start with the public dev signing secret when real accounts exist."""
     auth_secret()
@@ -117,6 +120,8 @@ def _current_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer))
 @app.post("/api/auth/login")
 async def login(request: Request) -> dict:
     body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Email required")
     email = str(body.get("email", "")).strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
@@ -132,7 +137,11 @@ async def login(request: Request) -> dict:
         except Exception as exc:  # noqa: BLE001
             logging.getLogger(__name__).warning("login: user store unavailable: %r", exc)
             raise HTTPException(status_code=503, detail="User accounts unavailable") from exc
-        if not record or not verify_password(password, record.get("password_hash", "")):
+        # unknown emails still pay for one PBKDF2 check, so response time does not reveal who has an account
+        stored = (record or {}).get("password_hash") or ""
+        if not stored.startswith("pbkdf2_"):  # unknown email or Google-only account ("__google__")
+            stored = _DUMMY_PASSWORD_HASH
+        if not verify_password(password, stored) or stored is _DUMMY_PASSWORD_HASH:
             raise HTTPException(status_code=401, detail="Invalid credentials")
     # else: no database configured — stateless demo mode, there is no user data to protect
     token = create_auth_token(email)

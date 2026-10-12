@@ -90,3 +90,33 @@ def test_dev_secret_still_works_without_a_database(monkeypatch):
     monkeypatch.delenv("MONGODB_URL", raising=False)
     assert verify_auth_token(auth.create_auth_token("dev@example.com")) == "dev@example.com"
     check_auth_config()
+
+
+def test_unknown_email_costs_a_password_check_like_a_wrong_password(accounts):
+    with (
+        patch("webapp.user_repository.authenticate_user", return_value=None),
+        patch("webapp.auth.verify_password", return_value=False) as verify,
+        pytest.raises(HTTPException) as err,
+    ):
+        _login({"email": "nobody@example.com", "password": "guess"})
+    assert err.value.status_code == 401
+    verify.assert_called_once()  # same PBKDF2 cost as a wrong password: no account-enumeration timing gap
+
+
+@pytest.mark.parametrize("body", [["victim@example.com"], "victim@example.com", None])
+def test_login_rejects_a_non_object_body(accounts, body):
+    with pytest.raises(HTTPException) as err:
+        _login(body)
+    assert err.value.status_code == 400
+
+
+def test_google_only_account_also_pays_the_password_check(accounts):
+    google_only = {"email": "g@example.com", "password_hash": "__google__"}
+    with (
+        patch("webapp.user_repository.authenticate_user", return_value=google_only),
+        patch("webapp.auth.verify_password", return_value=True) as verify,
+        pytest.raises(HTTPException) as err,
+    ):
+        _login({"email": "g@example.com", "password": "__google__"})
+    assert err.value.status_code == 401  # even a verify "match" against the dummy hash is refused
+    verify.assert_called_once()
