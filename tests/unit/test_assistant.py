@@ -11,7 +11,11 @@ from webapp.assistant import (
     AssistantNotConfigured,
     ThreadNotFound,
     cash_flow_summary,
+    delete_thread,
     find_transactions,
+    get_thread,
+    is_configured,
+    list_threads,
     portfolio_summary,
     run_turn,
     send_message,
@@ -316,3 +320,60 @@ def test_module_imports_neither_pandas_nor_openai():
 def test_run_turn_strips_markdown_bold_since_replies_render_as_plain_text():
     client = FakeClient(_reply(content="Your net worth is **$58,000**."))
     assert run_turn(client, [], "q", _ctx()[0]) == "Your net worth is $58,000."
+
+
+# ── thread list / get / delete ───────────────────────────────────────────────
+
+
+def test_list_threads_is_user_scoped_newest_first_and_capped():
+    db, coll = _threads_db()
+    oid = ObjectId()
+    cursor = coll.find.return_value.sort.return_value.limit
+    cursor.return_value = [{"_id": oid, "title": "Q", "updated_at": "2026-10-12"}]
+    with patch("webapp.assistant.get_db", return_value=db):
+        out = list_threads("owner@example.com")
+    assert coll.find.call_args.args[0] == {"user_email": "owner@example.com"}
+    assert "messages" not in coll.find.call_args.args[1]
+    assert coll.find.return_value.sort.call_args.args == ("updated_at", -1)
+    assert cursor.call_args.args == (50,)
+    assert out == [{"id": str(oid), "title": "Q", "updated_at": "2026-10-12"}]
+
+
+def test_get_thread_returns_messages_for_the_owner_only():
+    db, coll = _threads_db()
+    oid = ObjectId()
+    coll.find_one.return_value = {"_id": oid, "user_email": "owner@example.com", "profile_id": "p1", "title": "Q",
+                                  "messages": [{"role": "user", "content": "Q", "at": "t"}], "updated_at": "t"}
+    with patch("webapp.assistant.get_db", return_value=db):
+        out = get_thread("owner@example.com", str(oid))
+    assert coll.find_one.call_args.args[0] == {"_id": oid, "user_email": "owner@example.com"}
+    assert out == {"id": str(oid), "title": "Q", "profile_id": "p1", "updated_at": "t",
+                   "messages": [{"role": "user", "content": "Q", "at": "t"}]}
+    assert "user_email" not in out
+
+
+def test_get_and_delete_unknown_thread_raise_not_found():
+    db, coll = _threads_db()
+    coll.find_one.return_value = None
+    coll.delete_one.return_value.deleted_count = 0
+    with patch("webapp.assistant.get_db", return_value=db):
+        for call in (get_thread, delete_thread):
+            for tid in (str(ObjectId()), "bad-id"):
+                with pytest.raises(ThreadNotFound):
+                    call("owner@example.com", tid)
+
+
+def test_delete_thread_is_user_scoped():
+    db, coll = _threads_db()
+    oid = ObjectId()
+    coll.delete_one.return_value.deleted_count = 1
+    with patch("webapp.assistant.get_db", return_value=db):
+        delete_thread("owner@example.com", str(oid))
+    assert coll.delete_one.call_args.args[0] == {"_id": oid, "user_email": "owner@example.com"}
+
+
+def test_is_configured_follows_the_api_key(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    assert is_configured() is False
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
+    assert is_configured() is True

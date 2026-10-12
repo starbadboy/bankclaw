@@ -49,3 +49,19 @@ test("error keeps the typed message in the composer", () => {
   assert.match(html, /Assistant unavailable/);
   assert.match(html, /<textarea[^>]*>my question<\/textarea>/);
 });
+
+test("thread list shows New chat, titles, the active thread and a delete control per thread", () => {
+  const html = render(AssistantThreads, {
+    threads: [{ id: "t1", title: "Food last month" }, { id: "t2", title: "Net worth" }],
+    activeId: "t2", onNew() {}, onOpen() {}, onDelete() {},
+  });
+  assert.match(html, /New chat/);
+  assert.ok(html.indexOf("Food last month") < html.indexOf("Net worth"));
+  assert.match(html, /class="chat-thread active"[^>]*>(?:(?!chat-thread ).)*Net worth/s);
+  assert.equal((html.match(/aria-label="Delete thread/g) || []).length, 2);
+});
+
+test("thread list empty state", () => {
+  const html = render(AssistantThreads, { threads: [], activeId: null, onNew() {}, onOpen() {}, onDelete() {} });
+  assert.match(html, /No saved chats yet/);
+});

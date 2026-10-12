@@ -108,3 +108,21 @@ test("assistant send posts message, thread and profile and surfaces the server's
 
   await assert.rejects(apiAssistantSend({ message: "Q" }), (err) => err.message === "AI assistant not configured" && err.status === 503);
 });
+
+test("assistant thread list, open and delete hit the thread endpoints", async () => {
+  const requests = [];
+  global.fetch = async (path, options = {}) => {
+    requests.push({ path, method: options.method || "GET" });
+    if (path === "/api/assistant/threads") return jsonResponse({ threads: [{ id: "t/1", title: "Q" }], configured: true });
+    if (options.method === "DELETE") return jsonResponse({ deleted: true });
+    return jsonResponse({ thread: { id: "t/1", messages: [] } });
+  };
+  assert.deepEqual(await apiAssistantThreads(), { threads: [{ id: "t/1", title: "Q" }], configured: true });
+  assert.deepEqual(await apiAssistantThread("t/1"), { id: "t/1", messages: [] });
+  await apiAssistantDeleteThread("t/1");
+  assert.deepEqual(requests, [
+    { path: "/api/assistant/threads", method: "GET" },
+    { path: "/api/assistant/threads/t%2F1", method: "GET" },
+    { path: "/api/assistant/threads/t%2F1", method: "DELETE" },
+  ]);
+});

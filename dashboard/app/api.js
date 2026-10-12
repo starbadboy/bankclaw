@@ -363,6 +363,20 @@ async function apiAssistantSend({ message, thread_id = null, profile_id = null }
   return _assistantJson(res, "Assistant unavailable — try again");
 }
 
+async function apiAssistantThreads() {
+  return _assistantJson(await _fetch("/api/assistant/threads"), "Failed to load chats");
+}
+
+async function apiAssistantThread(id) {
+  const data = await _assistantJson(await _fetch(`/api/assistant/threads/${encodeURIComponent(id)}`), "Failed to load chat");
+  return data.thread;
+}
+
+async function apiAssistantDeleteThread(id) {
+  const res = await _fetch(`/api/assistant/threads/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return _assistantJson(res, "Failed to delete chat");
+}
+
 async function apiDeleteProfile(id) {
   const res = await _fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
@@ -527,7 +541,7 @@ Object.assign(window, {
   apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation, apiFetchAssetMarketHistory,
   apiFetchPortfolioGoals, apiCreatePortfolioGoal, apiUpdatePortfolioGoal, apiDeletePortfolioGoal, apiGoalSuggestions,
   apiAiReview,
-  apiAssistantSend,
+  apiAssistantSend, apiAssistantThreads, apiAssistantThread, apiAssistantDeleteThread,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,
 });

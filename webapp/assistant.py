@@ -31,6 +31,7 @@ _TITLE_CHARS = 60
 _DEFAULT_RANGE_DAYS = 90
 _LLM_TIMEOUT_SECONDS = 120
 _GROUP_BY = ("category", "merchant", "month")
+_MAX_THREADS = 50  # ponytail: no pagination; add it when users exceed 50 threads
 _SORTS = ("date", "amount")
 _MAX_ROWS = 20
 _ROW_FIELDS = ("date", "description", "amount", "category")
@@ -390,6 +391,39 @@ def _title(message: str) -> str:
 
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
+
+
+def is_configured() -> bool:
+    return bool(os.getenv("DEEPSEEK_API_KEY"))
+
+
+def list_threads(user_email: str) -> list[dict]:
+    """The user's newest threads (≤ 50), without messages."""
+    cursor = (
+        _threads()
+        .find({"user_email": user_email}, {"title": 1, "updated_at": 1})
+        .sort("updated_at", -1)
+        .limit(_MAX_THREADS)
+    )
+    return [{"id": str(doc["_id"]), "title": doc.get("title", ""), "updated_at": doc.get("updated_at")} for doc in cursor]
+
+
+def get_thread(user_email: str, thread_id: str) -> dict:
+    doc = _threads().find_one({"_id": _oid(thread_id), "user_email": user_email})
+    if not doc:
+        raise ThreadNotFound("Thread not found")
+    return {
+        "id": str(doc["_id"]),
+        "title": doc.get("title", ""),
+        "profile_id": doc.get("profile_id"),
+        "updated_at": doc.get("updated_at"),
+        "messages": doc.get("messages", []),
+    }
+
+
+def delete_thread(user_email: str, thread_id: str) -> None:
+    if _threads().delete_one({"_id": _oid(thread_id), "user_email": user_email}).deleted_count == 0:
+        raise ThreadNotFound("Thread not found")
 
 
 def send_message(

@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException
 from pymongo.errors import ServerSelectionTimeoutError
 
-from webapp.api import assistant_message
+from webapp.api import assistant_delete_thread, assistant_get_thread, assistant_list_threads, assistant_message
 from webapp.assistant import AssistantInputError, AssistantNotConfigured, ThreadNotFound
 
 USER = "owner@example.com"
@@ -82,3 +82,40 @@ def test_message_route_without_mongo_is_503(monkeypatch):
     with pytest.raises(HTTPException) as err:
         _send({"message": "Q"})
     assert err.value.status_code == 503
+
+
+def test_thread_routes_pass_the_user_and_return_shapes():
+    with (
+        patch("webapp.assistant.list_threads", return_value=[{"id": "t1"}]) as listed,
+        patch("webapp.assistant.is_configured", return_value=False),
+        patch("webapp.assistant.get_thread", return_value={"id": "t1", "messages": []}) as got,
+        patch("webapp.assistant.delete_thread") as deleted,
+    ):
+        assert asyncio.run(assistant_list_threads(user=USER)) == {"threads": [{"id": "t1"}], "configured": False}
+        assert asyncio.run(assistant_get_thread("t1", user=USER)) == {"thread": {"id": "t1", "messages": []}}
+        assert asyncio.run(assistant_delete_thread("t1", user=USER)) == {"deleted": True}
+    listed.assert_called_once_with(USER)
+    got.assert_called_once_with(USER, "t1")
+    deleted.assert_called_once_with(USER, "t1")
+
+
+def test_thread_routes_map_not_found_and_database_errors():
+    with patch("webapp.assistant.get_thread", side_effect=ThreadNotFound("Thread not found")):
+        with pytest.raises(HTTPException) as nf:
+            asyncio.run(assistant_get_thread("t1", user=USER))
+    with patch("webapp.assistant.delete_thread", side_effect=ThreadNotFound("Thread not found")):
+        with pytest.raises(HTTPException) as nf_del:
+            asyncio.run(assistant_delete_thread("t1", user=USER))
+    with patch("webapp.assistant.list_threads", side_effect=ServerSelectionTimeoutError("down")):
+        with pytest.raises(HTTPException) as db:
+            asyncio.run(assistant_list_threads(user=USER))
+    assert (nf.value.status_code, nf_del.value.status_code, db.value.status_code) == (404, 404, 503)
+
+
+def test_thread_routes_without_mongo_are_503(monkeypatch):
+    monkeypatch.setattr("webapp.api._MONGO", False)
+    for call in (lambda: assistant_list_threads(user=USER), lambda: assistant_get_thread("t1", user=USER),
+                 lambda: assistant_delete_thread("t1", user=USER)):
+        with pytest.raises(HTTPException) as err:
+            asyncio.run(call())
+        assert err.value.status_code == 503

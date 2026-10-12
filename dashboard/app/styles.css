@@ -1374,3 +1374,13 @@ body {
 .chat-error { padding: 8px 18px; color: var(--debit); font-size: 13px; border-top: 1px solid var(--rule); }
 .chat-composer { display: flex; gap: 10px; align-items: flex-end; padding: 12px; border-top: 1px solid var(--rule); }
 .chat-composer textarea { flex: 1; resize: none; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); color: var(--ink); }
+.assistant-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.chat-threads { display: flex; flex-direction: column; gap: 4px; padding: 12px; max-height: calc(100vh - 260px); overflow-y: auto; }
+.chat-threads > .btn { margin-bottom: 8px; justify-content: center; }
+.chat-threads-empty { font-size: 12px; color: var(--ink-4); padding: 6px 4px; }
+.chat-thread { display: flex; align-items: center; border-radius: 8px; }
+.chat-thread:hover, .chat-thread.active { background: var(--paper-2); }
+.chat-thread-title { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 8px; font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-thread.active .chat-thread-title { color: var(--ink); font-weight: 500; }
+.chat-thread-delete { background: none; border: 0; color: var(--ink-4); font-size: 16px; padding: 4px 8px; cursor: pointer; }
+.chat-thread-delete:hover:not(:disabled) { color: var(--debit); }

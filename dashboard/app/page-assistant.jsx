@@ -49,13 +49,64 @@ function AssistantChat({ messages, pending, error, draft, configured, onDraft, o
   );
 }
 
+function AssistantThreads({ threads, activeId, pending, onNew, onOpen, onDelete }) {
+  return (
+    <div className="chat-threads panel">
+      <button className="btn" onClick={onNew} disabled={pending}><Icon name="plus" size={13} /> New chat</button>
+      {threads.length === 0 && <div className="chat-threads-empty">No saved chats yet.</div>}
+      {threads.map((t) => (
+        <div key={t.id} className={"chat-thread" + (t.id === activeId ? " active" : "")}>
+          <button className="chat-thread-title" onClick={() => onOpen(t.id)} disabled={pending} title={t.title}>{t.title}</button>
+          <button className="chat-thread-delete" onClick={() => onDelete(t.id)} disabled={pending}
+            aria-label={`Delete thread ${t.title}`} title="Delete">×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AssistantPage({ currentProfileId = "all" }) {
-  const { useState: useStateAS } = React;
+  const { useState: useStateAS, useEffect: useEffectAS } = React;
   const [messages, setMessages] = useStateAS([]);
   const [threadId, setThreadId] = useStateAS(null);
+  const [threads, setThreads] = useStateAS([]);
   const [draft, setDraft] = useStateAS("");
   const [pending, setPending] = useStateAS(false);
   const [error, setError] = useStateAS("");
+
+  const refreshThreads = async () => {
+    try {
+      const res = await apiAssistantThreads();
+      setThreads(res.threads || []);
+    } catch (e) {
+      setError(e.message || "Failed to load chats");
+    }
+  };
+  useEffectAS(() => { refreshThreads(); }, []);
+
+  const newChat = () => { setMessages([]); setThreadId(null); setError(""); };
+
+  const openThread = async (id) => {
+    setError("");
+    try {
+      const thread = await apiAssistantThread(id);
+      setMessages(thread.messages || []);
+      setThreadId(thread.id);
+    } catch (e) {
+      setError(e.message || "Failed to load chat");
+    }
+  };
+
+  const deleteThread = async (id) => {
+    if (!window.confirm("Delete this chat? This cannot be undone.")) return;
+    try {
+      await apiAssistantDeleteThread(id);
+      if (id === threadId) newChat();
+      await refreshThreads();
+    } catch (e) {
+      setError(e.message || "Failed to delete chat");
+    }
+  };
 
   const send = async () => {
     const text = draft.trim();
@@ -67,6 +118,7 @@ function AssistantPage({ currentProfileId = "all" }) {
       const res = await apiAssistantSend({ message: text, thread_id: threadId, profile_id: currentProfileId });
       setThreadId(res.thread.id);
       setMessages([...before, { role: "user", content: text }, { role: "assistant", content: res.reply }]);
+      refreshThreads();
     } catch (e) {
       setMessages(before);
       setDraft(text);
@@ -85,8 +137,12 @@ function AssistantPage({ currentProfileId = "all" }) {
         the figures it asks for and a few example rows — never your full statements.
       </div>
       <div style={{ height: 20 }} />
-      <AssistantChat messages={messages} pending={pending} error={error} draft={draft} configured
-        onDraft={setDraft} onSend={send} />
+      <div className="assistant-layout">
+        <AssistantThreads threads={threads} activeId={threadId} pending={pending}
+          onNew={newChat} onOpen={openThread} onDelete={deleteThread} />
+        <AssistantChat messages={messages} pending={pending} error={error} draft={draft} configured
+          onDraft={setDraft} onSend={send} />
+      </div>
     </div>
   );
 }
