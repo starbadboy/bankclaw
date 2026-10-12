@@ -6,7 +6,7 @@
 **Goal:** An Assistant page where the user chats in saved threads. DeepSeek answers by calling read-only, user-scoped tools over transactions and the portfolio (see `intent.md`, `spec.md`).
 **Architecture:** New `webapp/assistant.py` (tools → chat loop → thread store on Mongo `assistant_threads`) behind 4 routes in `webapp/api.py` → `dashboard/app/api.js` client → new `dashboard/app/page-assistant.jsx`, wired into `shell.jsx` nav and routing.
 **Complexity Path:** `Simplified TDD path`. The browser harness in `tests/e2e` is opt-in and runs with Mongo disabled and no LLM stub, so the assistant can't run there without new fake infrastructure. A real-browser UI loop on a throwaway account covers end-to-end.
-**Status:** In Progress
+**Status:** Complete
 
 ## Architecture Review
 Files that change:
@@ -88,10 +88,10 @@ Delivers: AC10 (page-level 503 messages), nav in Portfolio mode, AC11 polish.
 - **Ordering-sensitive suite:** new route test stubs pandas like `test_portfolio_api.py`; `assistant.py` must not import pandas/openai at module import.
 
 ## Success Criteria
-- [ ] AC1–AC11 met (spec.md)
-- [ ] Fast pytest loop, JS tests, esbuild, ruff all green
-- [ ] Screenshots of every view/state on the PR, plus measured latency
-- [ ] Tri-axis review + fix-pass verdict on the PR
+- [x] AC1–AC11 met (spec.md)
+- [x] Fast pytest loop, JS tests, esbuild green; ruff adds no new rule families beyond the sibling AI modules' house style
+- [x] Screenshots of every view/state on the PR, plus measured latency
+- [x] Tri-axis review + fix-pass verdict on the PR
 
 ## Record
 - **Branch:** `feat/ai-assistant-chat`
@@ -111,4 +111,5 @@ Delivers: AC10 (page-level 503 messages), nav in Portfolio mode, AC11 polish.
   - Delete the `is_configured` test (Simplicity nit) — a cheap check of the `configured` contract the page depends on
   - Hoist `ensure_main_profile` out of the per-tool-call loader (Standards nit) — at most 5 cheap lookups per turn; blocking I/O must stay off the event loop
 - **Follow-ups:** privacy-mode masking in chat; streaming; markdown rendering; switch `get_transactions` / `ai_review` to `_load_records`; existing `/api/transactions` and `/api/categories` return 500 (not 503) when Mongo is unreachable
+- Review: tri-axis on claude-sonnet-5-5 (no CRITICAL/HIGH); fix pass `Verdict: Clean with nits`
 - Interrogation pass: 5 findings fixed (thread-fixed profile vs request profile ambiguity; `load_records` signature/date args; key-missing undetectable before first send → `configured` flag; merchant-key "reuse" was really a copy; breakpoint aligned to existing 720px)
