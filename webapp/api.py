@@ -733,6 +733,14 @@ async def ai_review(request: Request, user: str = Depends(_current_user)) -> dic
 # ---------------------------------------------------------------------------
 # AI assistant
 # ---------------------------------------------------------------------------
+def _load_records(user: str, start: str, end: str, profile_id: str | None) -> list[dict]:
+    """The user's transactions in [start, end] for one profile (``all``/empty = every profile), as dicts."""
+    main = ensure_main_profile(user)
+    filter_profile = None if (not profile_id or profile_id == "all") else profile_id
+    df = get_transactions_by_date_range(start, end, user, profile_id=filter_profile, main_profile_id=main["id"])
+    return [] if df.empty else df.to_dict("records")
+
+
 def _optional_id(body: dict, name: str) -> str | None:
     value = body.get(name)
     if value in (None, ""):
@@ -780,14 +788,9 @@ async def assistant_message(request: Request, user: str = Depends(_current_user)
     profile_id = _optional_id(body, "profile_id")
     from webapp.assistant import send_message  # noqa: PLC0415 — lazy, like goal_advisor
 
-    def load_records(start: str, end: str, profile: str) -> list[dict]:
-        main = ensure_main_profile(user)
-        filter_profile = None if (not profile or profile == "all") else profile
-        df = get_transactions_by_date_range(start, end, user, profile_id=filter_profile, main_profile_id=main["id"])
-        return [] if df.empty else df.to_dict("records")
-
     return await _assistant_call(
-        send_message, user, profile_id, thread_id, body.get("message"), load_records, lambda: _portfolio_snapshot(user)
+        send_message, user, profile_id, thread_id, body.get("message"),
+        lambda start, end, profile: _load_records(user, start, end, profile), lambda: _portfolio_snapshot(user),
     )
 
 

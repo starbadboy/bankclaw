@@ -377,3 +377,58 @@ def test_is_configured_follows_the_api_key(monkeypatch):
     assert is_configured() is False
     monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     assert is_configured() is True
+
+
+# ── review fixes ─────────────────────────────────────────────────────────────
+
+
+def test_send_message_normalises_nan_from_the_dataframe_before_tools_see_it():
+    nan = float("nan")
+    db, coll = _threads_db()
+    coll.insert_one.return_value.inserted_id = ObjectId()
+    load = MagicMock(return_value=[{"date": "2026-09-01", "description": "SHOP", "amount": -5.0, "category": nan},
+                                   {"date": "2026-09-02", "description": "X", "amount": nan, "category": "Food"}])
+    client = FakeClient(_reply(tool_calls=[_tool_call("find_transactions", {})]), _reply(content="ok"))
+    with patch("webapp.assistant.get_db", return_value=db):
+        send_message("owner@example.com", "all", None, "q", load, MagicMock(), client=client)
+    content = client.calls[1]["messages"][-1]["content"]
+    assert "NaN" not in content
+    result = json.loads(content)
+    assert result["spend"] == 5.0 and {r["category"] for r in result["rows"]} == {None, "Food"}
+
+
+def test_non_finite_tool_numbers_return_an_error_instead_of_crashing():
+    for args in ({"limit": float("inf")}, {"min_amount": float("nan")}, {"max_amount": 1e999}):
+        raw = json.dumps(args)  # Python emits Infinity/NaN, which json.loads accepts
+        call = SimpleNamespace(id="n", type="function", function=SimpleNamespace(name="find_transactions", arguments=raw))
+        client = FakeClient(_reply(tool_calls=[call]), _reply(content="ok"))
+        assert run_turn(client, [], "q", _ctx()[0]) == "ok"
+        assert "finite" in json.loads(client.calls[1]["messages"][-1]["content"])["error"]
+
+
+def test_empty_model_reply_raises_and_saves_nothing():
+    db, coll = _threads_db()
+    with patch("webapp.assistant.get_db", return_value=db), pytest.raises(assistant.AssistantError):
+        send_message("owner@example.com", "all", None, "q", MagicMock(), MagicMock(), client=FakeClient(_reply(content="  ")))
+    coll.insert_one.assert_not_called()
+
+
+def test_full_thread_asks_for_a_new_chat_without_calling_the_model():
+    db, coll = _threads_db()
+    oid = ObjectId()
+    coll.find_one.return_value = {"_id": oid, "user_email": "owner@example.com", "profile_id": "all", "title": "T",
+                                  "messages": [{"role": "user", "content": "m", "at": "x"}] * 200}
+    client = FakeClient(_reply(content="never"))
+    with patch("webapp.assistant.get_db", return_value=db), pytest.raises(AssistantInputError, match="new chat"):
+        send_message("owner@example.com", "all", str(oid), "q", MagicMock(), MagicMock(), client=client)
+    assert client.calls == []
+
+
+def test_thread_index_is_created_once_per_process(monkeypatch):
+    monkeypatch.setattr(assistant, "_indexes_ready", False)
+    db, coll = _threads_db()
+    coll.find.return_value.sort.return_value.limit.return_value = []
+    with patch("webapp.assistant.get_db", return_value=db):
+        list_threads("owner@example.com")
+        list_threads("owner@example.com")
+    assert coll.create_index.call_count == 1

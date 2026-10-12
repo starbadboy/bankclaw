@@ -1369,8 +1369,6 @@ body {
 .chat-empty { margin: auto; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
 .chat-empty-title { font-size: 15px; color: var(--ink-2); }
 .chat-examples { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.chat-example { border: 1px solid var(--rule); background: transparent; color: var(--ink-2); border-radius: 999px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
-.chat-example:hover:not(:disabled) { background: var(--paper-2); }
 .chat-error { padding: 8px 18px; color: var(--debit); font-size: 13px; border-top: 1px solid var(--rule); }
 .chat-composer { display: flex; gap: 10px; align-items: flex-end; padding: 12px; border-top: 1px solid var(--rule); }
 .chat-composer textarea { flex: 1; resize: none; font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--paper); color: var(--ink); }

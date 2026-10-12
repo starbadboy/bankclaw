@@ -6,7 +6,7 @@
 **Goal:** An Assistant page where the user chats in saved threads. DeepSeek answers by calling read-only, user-scoped tools over transactions and the portfolio (see `intent.md`, `spec.md`).
 **Architecture:** New `webapp/assistant.py` (tools → chat loop → thread store on Mongo `assistant_threads`) behind 4 routes in `webapp/api.py` → `dashboard/app/api.js` client → new `dashboard/app/page-assistant.jsx`, wired into `shell.jsx` nav and routing.
 **Complexity Path:** `Simplified TDD path`. The browser harness in `tests/e2e` is opt-in and runs with Mongo disabled and no LLM stub, so the assistant can't run there without new fake infrastructure. A real-browser UI loop on a throwaway account covers end-to-end.
-**Status:** Draft
+**Status:** In Progress
 
 ## Architecture Review
 Files that change:
@@ -95,10 +95,20 @@ Delivers: AC10 (page-level 503 messages), nav in Portfolio mode, AC11 polish.
 
 ## Record
 - **Branch:** `feat/ai-assistant-chat`
-- **PR:** —
+- **PR:** https://github.com/starbadboy/bankclaw/pull/5
 - **Departures:**
   - Merchant key drops words containing digits after the first word (ai_coach's plain "first 4 words" split `GRAB FOOD SINGAPORE A1/B2/C3` into separate merchants in the T1 UI loop) — ladder row "Merchant key" is now a variant, not a copy
   - Replies have `**` stripped and the prompt bans bold — DeepSeek used markdown bold despite "plain text", which renders literally in the pre-wrap bubble
-- **Declined findings:** —
-- **Follow-ups:** privacy-mode masking in chat; streaming; markdown rendering
+  - Ledger tools exclude category `Transfer` unless a category is asked for — matches the dashboard (`data.js` spend excludes transfers), so AC1 totals agree
+  - Assistant tool-call messages echo DeepSeek `reasoning_content` within a turn — required by DeepSeek thinking mode for multi-round tool calls
+  - Thread title is cut at 59 characters + "…" (spec: "trimmed to 60") — the ellipsis counts toward the 60
+  - JS client tests live in `dashboard/app/api.test.js` (not listed in the plan's file list)
+  - Review fixes: shared `_load_records(user, start, end, profile_id)` in `api.py` (assistant uses it; the two older inline copies are left as they were); records cleaned of NaN before tools; non-finite tool numbers rejected; empty reply → 502, nothing saved; thread capped at 200 messages ("start a new chat"); thread index created once per process
+- **Declined findings:**
+  - Reply lost when the save fails after a successful LLM call (Standards LOW) — rare; returning an unsaved reply changes the API contract. The draft is restored so the user can retry
+  - Disable the composer when the thread list returns 503 (Spec LOW) — within spec; a failed send restores the draft
+  - Replace the `SimpleNamespace` ctx with two arguments (Simplicity nit) — churns the test helpers for no behaviour gain
+  - Delete the `is_configured` test (Simplicity nit) — a cheap check of the `configured` contract the page depends on
+  - Hoist `ensure_main_profile` out of the per-tool-call loader (Standards nit) — at most 5 cheap lookups per turn; blocking I/O must stay off the event loop
+- **Follow-ups:** privacy-mode masking in chat; streaming; markdown rendering; switch `get_transactions` / `ai_review` to `_load_records`; existing `/api/transactions` and `/api/categories` return 500 (not 503) when Mongo is unreachable
 - Interrogation pass: 5 findings fixed (thread-fixed profile vs request profile ambiguity; `load_records` signature/date args; key-missing undetectable before first send → `configured` flag; merchant-key "reuse" was really a copy; breakpoint aligned to existing 720px)

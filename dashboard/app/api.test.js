@@ -106,7 +106,7 @@ test("assistant send posts message, thread and profile and surfaces the server's
   assert.equal(requests[0].options.method, "POST");
   assert.deepEqual(JSON.parse(requests[0].options.body), { message: "Q", thread_id: null, profile_id: "p1" });
 
-  await assert.rejects(apiAssistantSend({ message: "Q" }), (err) => err.message === "AI assistant not configured" && err.status === 503);
+  await assert.rejects(apiAssistantSend({ message: "Q" }), (err) => err.message === "AI assistant not configured");
 });
 
 test("assistant thread list, open and delete hit the thread endpoints", async () => {

@@ -10,6 +10,7 @@ This module imports neither pandas nor openai at import time (route tests stub p
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -25,8 +26,9 @@ from webapp.goal_advisor import build_goal_aggregate
 _THREADS_COLLECTION = "assistant_threads"
 MAX_MESSAGE_CHARS = 2000
 _MAX_TOOL_CALLS = 5
-_HISTORY_MESSAGES = 20
-_MAX_GROUPS = 25
+_HISTORY_MESSAGES = 20  # ponytail: older turns are silently dropped from context; summarise them if long threads need it
+_MAX_THREAD_MESSAGES = 200  # keeps a thread document far below Mongo's 16 MB limit
+_MAX_GROUPS = 25  # ponytail: long tails are cut without a flag; add "groups_truncated" if answers miss small groups
 _TITLE_CHARS = 60
 _DEFAULT_RANGE_DAYS = 90
 _LLM_TIMEOUT_SECONDS = 120
@@ -119,6 +121,7 @@ _TOOLS = [
 # ── Tools ────────────────────────────────────────────────────────────────────
 
 
+# ponytail: naive merchant proxy; a merchant-normalisation table if grouping misfires on real statements
 def _merchant_key(description: object) -> str:
     """Merchant proxy: first 4 words upper-cased, minus reference codes (words with digits) after the first word."""
     tokens = str(description or "").split()
@@ -185,9 +188,9 @@ def cash_flow_summary(
     }
 
 
-def _totals(records: list[dict]) -> tuple[float, float]:
-    amounts = [float(r.get("amount") or 0.0) for r in records]
-    return round(sum(a for a in amounts if a > 0), 2), round(-sum(a for a in amounts if a < 0), 2)
+def _clean(records: list[dict]) -> list[dict]:
+    """DataFrame rows carry NaN for missing fields; turn them into None so filters and JSON stay sane."""
+    return [{k: None if isinstance(v, float) and math.isnan(v) else v for k, v in r.items()} for r in records]
 
 
 def find_transactions(
@@ -214,8 +217,11 @@ def find_transactions(
     else:
         ordered = sorted(matched, key=lambda r: str(r.get("date") or ""), reverse=True)
     rows = [{field: r.get(field) for field in _ROW_FIELDS} for r in ordered[: max(1, min(limit, _MAX_ROWS))]]
-    income, spend = _totals(matched)
-    return {"match_count": len(matched), "income": income, "spend": spend, "rows_shown": len(rows), "rows": rows}
+    totals = cash_flow_summary(matched, category=category)  # matched is already filtered; reuse the income/spend split
+    return {
+        "match_count": len(matched), "income": totals["income"], "spend": totals["spend"],
+        "rows_shown": len(rows), "rows": rows,
+    }
 
 
 def portfolio_summary(snapshot: dict) -> dict:
@@ -246,8 +252,8 @@ def _optional_number(args: dict, name: str) -> float | None:
     value = args.get(name)
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise AssistantInputError(f"{name} must be a number")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise AssistantInputError(f"{name} must be a finite number")
     return float(value)
 
 
@@ -348,7 +354,11 @@ def run_turn(client: object, history: list[dict], message: str, ctx: SimpleNames
             kwargs["tool_choice"] = "none"
         msg = client.chat.completions.create(**kwargs).choices[0].message
         if not msg.tool_calls or forced:
-            return (msg.content or "").replace("**", "").strip()  # replies render as plain text
+            # ponytail: strips bold only; render markdown in the page if replies need richer formatting
+            reply = (msg.content or "").replace("**", "").strip()
+            if not reply:
+                raise AssistantError("The model returned an empty reply")
+            return reply
         messages.append(_assistant_message(msg))
         for tc in msg.tool_calls:
             calls += 1
@@ -372,9 +382,15 @@ def _make_client() -> object:
 # ── Threads ──────────────────────────────────────────────────────────────────
 
 
+_indexes_ready = False
+
+
 def _threads():
+    global _indexes_ready  # noqa: PLW0603 — once-per-process flag
     coll = get_db()[_THREADS_COLLECTION]
-    coll.create_index([("user_email", 1), ("updated_at", -1)], background=True)
+    if not _indexes_ready:
+        coll.create_index([("user_email", 1), ("updated_at", -1)], background=True)
+        _indexes_ready = True
     return coll
 
 
@@ -447,8 +463,12 @@ def send_message(
         thread = coll.find_one({"_id": _oid(thread_id), "user_email": user_email})
         if not thread:
             raise ThreadNotFound("Thread not found")
+        if len(thread.get("messages", [])) >= _MAX_THREAD_MESSAGES:
+            raise AssistantInputError("This chat is full — start a new chat to keep going")
     profile = thread["profile_id"] if thread else (profile_id or "all")
-    ctx = SimpleNamespace(load_records=lambda start, end: load_records(start, end, profile), load_portfolio=load_portfolio)
+    ctx = SimpleNamespace(
+        load_records=lambda start, end: _clean(load_records(start, end, profile)), load_portfolio=load_portfolio
+    )
 
     reply = run_turn(client, thread["messages"] if thread else [], text, ctx)
 

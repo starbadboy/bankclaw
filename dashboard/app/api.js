@@ -350,9 +350,7 @@ async function apiAiReview({ range_days = 90, profile_id = null, force_refresh =
 async function _assistantJson(res, fallback) {
   if (res.ok) return res.json();
   const err = await res.json().catch(() => ({}));
-  const error = new Error(err.detail || fallback);
-  error.status = res.status;
-  throw error;
+  throw new Error(err.detail || fallback);
 }
 
 async function apiAssistantSend({ message, thread_id = null, profile_id = null } = {}) {

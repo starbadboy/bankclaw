@@ -17,7 +17,7 @@ function AssistantChat({ messages, pending, error, draft, configured, onDraft, o
         {!configured && (
           <div className="chat-empty">
             <div className="chat-empty-title">AI assistant not configured.</div>
-            <div className="chat-threads-empty">Set <code>DEEPSEEK_API_KEY</code> on the server to enable it.</div>
+            <div className="hint">Set <code>DEEPSEEK_API_KEY</code> on the server to enable it.</div>
           </div>
         )}
         {configured && messages.length === 0 && !pending && (
@@ -25,7 +25,7 @@ function AssistantChat({ messages, pending, error, draft, configured, onDraft, o
             <div className="chat-empty-title">Ask anything about your money.</div>
             <div className="chat-examples">
               {ASSISTANT_EXAMPLES.map((q) => (
-                <button key={q} className="chat-example" onClick={() => onDraft(q)}>{q}</button>
+                <button key={q} className="chip" onClick={() => onDraft(q)}>{q}</button>
               ))}
             </div>
           </div>
