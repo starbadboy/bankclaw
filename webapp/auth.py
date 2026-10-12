@@ -31,16 +31,23 @@ def _b64_decode(raw: str) -> bytes:
     return urlsafe_b64decode((raw + padding).encode("utf-8"))
 
 
-def _auth_secret() -> bytes:
-    # Keep a deterministic default for local/dev usage when env var is absent.
-    return os.getenv("AUTH_TOKEN_SECRET", "bankclaw-local-dev-secret").encode("utf-8")
+_DEV_AUTH_SECRET = "bankclaw-local-dev-secret"
+
+
+def auth_secret() -> bytes:
+    secret = os.getenv("AUTH_TOKEN_SECRET")
+    if secret:
+        return secret.encode("utf-8")
+    if os.getenv("MONGODB_URL"):  # real accounts exist: a public default would let anyone forge tokens
+        raise RuntimeError("AUTH_TOKEN_SECRET must be set when MONGODB_URL is configured")
+    return _DEV_AUTH_SECRET.encode("utf-8")  # local/dev without a database
 
 
 def create_auth_token(email: str, now_ts: int | None = None) -> str:
     issued_at = int(now_ts if now_ts is not None else time.time())
     payload = {"email": normalize_email(email), "exp": issued_at + _AUTH_TOKEN_TTL_SECONDS}
     payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    signature = hmac.new(_auth_secret(), payload_bytes, hashlib.sha256).hexdigest().encode("utf-8")
+    signature = hmac.new(auth_secret(), payload_bytes, hashlib.sha256).hexdigest().encode("utf-8")
     return f"{_b64_encode(payload_bytes)}.{_b64_encode(signature)}"
 
 
@@ -48,7 +55,7 @@ def verify_auth_token(token: str, now_ts: int | None = None) -> str | None:
     try:
         payload_part, signature_part = token.split(".", maxsplit=1)
         payload_bytes = _b64_decode(payload_part)
-        expected_sig = hmac.new(_auth_secret(), payload_bytes, hashlib.sha256).hexdigest()
+        expected_sig = hmac.new(auth_secret(), payload_bytes, hashlib.sha256).hexdigest()
         actual_sig = _b64_decode(signature_part).decode("utf-8")
         if not hmac.compare_digest(expected_sig, actual_sig):
             return None

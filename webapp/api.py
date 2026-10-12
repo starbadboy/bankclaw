@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 import io
 import logging
 import os
@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
-from webapp.auth import create_auth_token, verify_auth_token
+from webapp.auth import auth_secret, create_auth_token, hash_password, verify_auth_token
 from webapp.category_definitions import DEFAULT_CATEGORIES, get_effective_categories, get_effective_categories_full
 from webapp.market_data import RANGES, TICKER_PATTERN, MarketDataError, get_market_history
 from webapp.dashboard_assets import render_index
@@ -75,7 +75,21 @@ except Exception:  # noqa: BLE001
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
-app = FastAPI(title="Bankclaw API", docs_url="/api/docs", redoc_url=None)
+_DUMMY_PASSWORD_HASH = hash_password("timing-equaliser-not-a-real-password")
+
+
+def check_auth_config() -> None:
+    """Refuse to start with the public dev signing secret when real accounts exist."""
+    auth_secret()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):  # noqa: ANN202
+    check_auth_config()
+    yield
+
+
+app = FastAPI(title="Bankclaw API", docs_url="/api/docs", redoc_url=None, lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -106,22 +120,30 @@ def _current_user(creds: HTTPAuthorizationCredentials | None = Depends(_bearer))
 @app.post("/api/auth/login")
 async def login(request: Request) -> dict:
     body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Email required")
     email = str(body.get("email", "")).strip().lower()
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
-    # password auth against user_repository when available; demo mode otherwise
-    password = str(body.get("password", ""))
-    if password:
+    if os.getenv("MONGODB_URL"):  # accounts exist: always verify, fail closed
+        password = body.get("password")
+        if not isinstance(password, str) or not password:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        from webapp.auth import verify_password  # noqa: PLC0415
+        from webapp.user_repository import authenticate_user  # noqa: PLC0415
+
         try:
-            from webapp.auth import verify_password  # noqa: PLC0415
-            from webapp.user_repository import authenticate_user  # noqa: PLC0415
-            record = authenticate_user(email)
-            if not record or not verify_password(password, record.get("password_hash", "")):
-                raise HTTPException(status_code=401, detail="Invalid credentials")
-        except HTTPException:
-            raise
-        except Exception:  # noqa: BLE001
-            pass  # no MongoDB / user store — demo mode, allow any credentials
+            record = await asyncio.to_thread(authenticate_user, email)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning("login: user store unavailable: %r", exc)
+            raise HTTPException(status_code=503, detail="User accounts unavailable") from exc
+        # unknown emails still pay for one PBKDF2 check, so response time does not reveal who has an account
+        stored = (record or {}).get("password_hash") or ""
+        if not stored.startswith("pbkdf2_"):  # unknown email or Google-only account ("__google__")
+            stored = _DUMMY_PASSWORD_HASH
+        if not verify_password(password, stored) or stored is _DUMMY_PASSWORD_HASH:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+    # else: no database configured — stateless demo mode, there is no user data to protect
     token = create_auth_token(email)
     return {"token": token, "email": email}
 
@@ -185,23 +207,11 @@ async def google_auth(request: Request) -> dict:
 
 @app.post("/api/auth/reset-password")
 async def reset_password(request: Request) -> dict:
-    """Unauthenticated reset — matches Streamlit 'Reset Password' tab behaviour."""
-    body = await request.json()
-    from webapp.auth import hash_password, normalize_email  # noqa: PLC0415
-    email = normalize_email(str(body.get("email", "")))
-    new_password = str(body.get("new_password", ""))
-    if "@" not in email:
-        raise HTTPException(status_code=400, detail="Valid email required")
-    if len(new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
-    try:
-        from webapp.user_repository import update_password  # noqa: PLC0415
-        updated = update_password(email, hash_password(new_password))
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=503, detail="User accounts unavailable") from exc
-    if not updated:
-        raise HTTPException(status_code=404, detail="Account not found")
-    return {"ok": True}
+    """Disabled: resetting without proving ownership of the email allowed account takeover.
+    Returns until the emailed reset-link flow ships."""
+    raise HTTPException(
+        status_code=410, detail="Password reset is temporarily unavailable. Sign in with Google or contact support."
+    )
 
 
 @app.post("/api/auth/change-password")

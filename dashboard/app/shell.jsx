@@ -176,11 +176,6 @@ function LoginPage({ onLogin, initialMode = "login", onBackHome }) {
               <button type="submit" disabled={loading} style={{ width: "100%", padding: "11px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 4, fontSize: 14, fontWeight: 500, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1 }}>
                 {loading ? "Signing in…" : "Sign in"}
               </button>
-              <div style={{ marginTop: 16, textAlign: "center" }}>
-                <button type="button" onClick={() => switchMode("reset")} style={{ background: "none", border: "none", fontSize: 12, color: "var(--ink-3)", cursor: "pointer", textDecoration: "underline" }}>
-                  Forgot password?
-                </button>
-              </div>
             </form>
           </>
         )}
