@@ -20,6 +20,7 @@ from bson.errors import InvalidId
 
 from webapp.db import get_db
 from webapp.deepseek_config import DEEPSEEK_BASE_URL, get_deepseek_model
+from webapp.goal_advisor import build_goal_aggregate
 
 _THREADS_COLLECTION = "assistant_threads"
 MAX_MESSAGE_CHARS = 2000
@@ -30,6 +31,9 @@ _TITLE_CHARS = 60
 _DEFAULT_RANGE_DAYS = 90
 _LLM_TIMEOUT_SECONDS = 120
 _GROUP_BY = ("category", "merchant", "month")
+_SORTS = ("date", "amount")
+_MAX_ROWS = 20
+_ROW_FIELDS = ("date", "description", "amount", "category")
 
 
 class AssistantError(Exception):
@@ -56,7 +60,7 @@ Rules:
 - Spending amounts are positive numbers in tool results; transfers between own accounts are excluded unless asked for.
 - You are read-only: you cannot change data. If the user wants a change, tell them where in the app to do it.
 - If the data cannot answer the question, say so plainly.
-- Reply in the language the user writes in. Plain text only: short paragraphs and "- " bullets, no markdown tables or headings.
+- Reply in the language the user writes in. Plain text only: short paragraphs and "- " bullets; no markdown (no **bold**, tables or headings).
 """
 
 _TOOLS = [
@@ -78,6 +82,36 @@ _TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_transactions",
+            "description": "Individual transactions matching filters, for questions about specific purchases. "
+            "match_count and totals cover every match; at most 20 example rows are returned.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "start": {"type": "string", "description": "YYYY-MM-DD, inclusive. Default: 90 days ago."},
+                    "end": {"type": "string", "description": "YYYY-MM-DD, inclusive. Default: today."},
+                    "category": {"type": "string"},
+                    "merchant_contains": {"type": "string"},
+                    "min_amount": {"type": "number", "description": "Minimum absolute amount in SGD."},
+                    "max_amount": {"type": "number", "description": "Maximum absolute amount in SGD."},
+                    "sort": {"type": "string", "enum": list(_SORTS), "description": "date = newest first, amount = largest first."},
+                    "limit": {"type": "integer", "description": "Rows to return, 1-20. Default 20."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "portfolio_summary",
+            "description": "Current net worth, total assets and debts, allocation by asset class, debts (balance, APR, "
+            "monthly payment), monthly net-worth trend and the user's goals with targets and dates.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
 ]
 
 
@@ -85,9 +119,12 @@ _TOOLS = [
 
 
 def _merchant_key(description: object) -> str:
-    """Same proxy as ai_coach: first 4 words, upper-cased."""
+    """Merchant proxy: first 4 words upper-cased, minus reference codes (words with digits) after the first word."""
     tokens = str(description or "").split()
-    return " ".join(tokens[:4]).upper()[:50] if tokens else "UNKNOWN"
+    if not tokens:
+        return "UNKNOWN"
+    kept = tokens[:1] + [t for t in tokens[1:] if not any(c.isdigit() for c in t)]
+    return " ".join(kept[:4]).upper()[:50]
 
 
 def _is_transfer(record: dict) -> bool:
@@ -147,6 +184,72 @@ def cash_flow_summary(
     }
 
 
+def _totals(records: list[dict]) -> tuple[float, float]:
+    amounts = [float(r.get("amount") or 0.0) for r in records]
+    return round(sum(a for a in amounts if a > 0), 2), round(-sum(a for a in amounts if a < 0), 2)
+
+
+def find_transactions(
+    records: list[dict],
+    *,
+    category: str | None = None,
+    merchant_contains: str | None = None,
+    min_amount: float | None = None,
+    max_amount: float | None = None,
+    sort: str = "date",
+    limit: int = _MAX_ROWS,
+) -> dict:
+    """Matching transactions: totals over every match, at most 20 rows with only the whitelisted fields."""
+    if sort not in _SORTS:
+        raise AssistantInputError(f"sort must be one of {', '.join(_SORTS)}")
+    matched = [
+        r
+        for r in _filter(records, category, merchant_contains)
+        if (min_amount is None or abs(float(r.get("amount") or 0.0)) >= min_amount)
+        and (max_amount is None or abs(float(r.get("amount") or 0.0)) <= max_amount)
+    ]
+    if sort == "amount":
+        ordered = sorted(matched, key=lambda r: -abs(float(r.get("amount") or 0.0)))
+    else:
+        ordered = sorted(matched, key=lambda r: str(r.get("date") or ""), reverse=True)
+    rows = [{field: r.get(field) for field in _ROW_FIELDS} for r in ordered[: max(1, min(limit, _MAX_ROWS))]]
+    income, spend = _totals(matched)
+    return {"match_count": len(matched), "income": income, "spend": spend, "rows_shown": len(rows), "rows": rows}
+
+
+def portfolio_summary(snapshot: dict) -> dict:
+    """The goal advisor's aggregate plus each goal's name, target and date (debts referenced by index)."""
+    debts = snapshot.get("debts", [])
+    aggregate = build_goal_aggregate(
+        snapshot.get("assets", []), debts, snapshot.get("histories", {}), snapshot.get("goals", []),
+        asset_kind_names=snapshot.get("asset_kind_names"),
+    )
+    debt_index = {d["id"]: i for i, d in enumerate(debts)}
+    goals = []
+    for goal in snapshot.get("goals", []):
+        kind = goal.get("kind") or "net_worth"
+        entry = {"name": goal.get("name"), "kind": kind}
+        if kind == "net_worth":
+            entry["target_amount"] = goal.get("target_amount")
+        elif kind == "allocation":
+            entry["asset_kind"], entry["target_pct"] = goal.get("asset_kind"), goal.get("target_pct")
+        elif kind == "debt_payoff":
+            entry["debt_index"] = debt_index.get(goal.get("debt_id"))
+        entry["target_date"] = goal.get("target_date")
+        goals.append(entry)
+    aggregate.pop("existing_goals", None)
+    return {**aggregate, "goals": goals}
+
+
+def _optional_number(args: dict, name: str) -> float | None:
+    value = args.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AssistantInputError(f"{name} must be a number")
+    return float(value)
+
+
 def _parse_range(args: dict) -> tuple[str, str]:
     def parse(name: str, default: date) -> date:
         raw = args.get(name)
@@ -191,6 +294,20 @@ def _run_tool(name: str, raw_arguments: str | None, ctx: SimpleNamespace) -> dic
                 category=_optional_str(args, "category"),
                 merchant_contains=_optional_str(args, "merchant_contains"),
             )
+        if name == "find_transactions":
+            start, end = _parse_range(args)
+            limit = _optional_number(args, "limit")
+            return find_transactions(
+                ctx.load_records(start, end),
+                category=_optional_str(args, "category"),
+                merchant_contains=_optional_str(args, "merchant_contains"),
+                min_amount=_optional_number(args, "min_amount"),
+                max_amount=_optional_number(args, "max_amount"),
+                sort=_optional_str(args, "sort") or "date",
+                limit=int(limit) if limit is not None else _MAX_ROWS,
+            )
+        if name == "portfolio_summary":
+            return portfolio_summary(ctx.load_portfolio())
     except AssistantInputError as exc:
         return {"error": str(exc)}
     return {"error": f"unknown tool: {name}"}
@@ -230,7 +347,7 @@ def run_turn(client: object, history: list[dict], message: str, ctx: SimpleNames
             kwargs["tool_choice"] = "none"
         msg = client.chat.completions.create(**kwargs).choices[0].message
         if not msg.tool_calls or forced:
-            return (msg.content or "").strip()
+            return (msg.content or "").replace("**", "").strip()  # replies render as plain text
         messages.append(_assistant_message(msg))
         for tc in msg.tool_calls:
             calls += 1

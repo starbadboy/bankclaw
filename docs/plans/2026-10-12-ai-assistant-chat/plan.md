@@ -96,7 +96,9 @@ Delivers: AC10 (page-level 503 messages), nav in Portfolio mode, AC11 polish.
 ## Record
 - **Branch:** `feat/ai-assistant-chat`
 - **PR:** —
-- **Departures:** —
+- **Departures:**
+  - Merchant key drops words containing digits after the first word (ai_coach's plain "first 4 words" split `GRAB FOOD SINGAPORE A1/B2/C3` into separate merchants in the T1 UI loop) — ladder row "Merchant key" is now a variant, not a copy
+  - Replies have `**` stripped and the prompt bans bold — DeepSeek used markdown bold despite "plain text", which renders literally in the pre-wrap bubble
 - **Declined findings:** —
 - **Follow-ups:** privacy-mode masking in chat; streaming; markdown rendering
 - Interrogation pass: 5 findings fixed (thread-fixed profile vs request profile ambiguity; `load_records` signature/date args; key-missing undetectable before first send → `configured` flag; merchant-key "reuse" was really a copy; breakpoint aligned to existing 720px)

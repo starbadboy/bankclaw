@@ -11,6 +11,8 @@ from webapp.assistant import (
     AssistantNotConfigured,
     ThreadNotFound,
     cash_flow_summary,
+    find_transactions,
+    portfolio_summary,
     run_turn,
     send_message,
 )
@@ -70,7 +72,7 @@ def test_cash_flow_filters_by_category_and_merchant_case_insensitively():
     by_merchant = cash_flow_summary(RECORDS, merchant_contains="grab", group_by="merchant")
     assert by_cat["spend"] == 30.0 and by_cat["transaction_count"] == 2
     assert by_merchant["spend"] == 30.0
-    assert [g["key"] for g in by_merchant["groups"]] == ["GRAB FOOD SINGAPORE 123", "GRAB FOOD SINGAPORE 999"]
+    assert by_merchant["groups"] == [{"key": "GRAB FOOD SINGAPORE", "spend": 30.0, "income": 0.0, "count": 2}]
 
 
 def test_cash_flow_month_grouping_and_explicit_transfer_filter():
@@ -91,6 +93,83 @@ def test_cash_flow_caps_groups_at_25_and_never_returns_rows():
 def test_cash_flow_on_empty_records():
     out = cash_flow_summary([], group_by="category")
     assert out == {"income": 0.0, "spend": 0.0, "net": 0.0, "transaction_count": 0, "groups": []}
+
+
+def test_merchant_key_drops_reference_codes_but_keeps_a_leading_brand():
+    assert assistant._merchant_key("GRAB FOOD SINGAPORE A1") == "GRAB FOOD SINGAPORE"
+    assert assistant._merchant_key("7-ELEVEN CLEMENTI 0123 SG") == "7-ELEVEN CLEMENTI SG"
+    assert assistant._merchant_key("  ") == "UNKNOWN"
+
+
+# ── find_transactions ────────────────────────────────────────────────────────
+
+
+def test_find_transactions_returns_whitelisted_rows_newest_first():
+    out = find_transactions(RECORDS, merchant_contains="grab")
+    assert out["match_count"] == 2 and out["spend"] == 30.0
+    assert out["rows"] == [
+        {"date": "2026-09-15", "description": "GRAB FOOD SINGAPORE 999", "amount": -9.5, "category": "Food"},
+        {"date": "2026-09-02", "description": "GRAB FOOD SINGAPORE 123", "amount": -20.5, "category": "Food"},
+    ]
+    assert "user_email" not in json.dumps(out) and "DBS" not in json.dumps(out) and "p1" not in json.dumps(out)
+
+
+def test_find_transactions_caps_rows_at_20_but_totals_cover_every_match():
+    many = [{"date": f"2026-09-{(i % 28) + 1:02d}", "description": f"SHOP {i}", "amount": -2.0, "category": "Misc"} for i in range(50)]
+    out = find_transactions(many, limit=500)
+    assert out["match_count"] == 50 and out["spend"] == 100.0
+    assert len(out["rows"]) == 20 and out["rows_shown"] == 20
+    assert len(find_transactions(many, limit=3)["rows"]) == 3
+
+
+def test_find_transactions_filters_by_absolute_amount_and_sorts_by_size():
+    out = find_transactions(RECORDS, min_amount=10, max_amount=60, sort="amount")
+    assert [r["amount"] for r in out["rows"]] == [-50.0, -20.5]  # transfer + salary excluded by filters
+    with pytest.raises(AssistantInputError):
+        find_transactions(RECORDS, sort="random")
+
+
+def test_run_turn_find_transactions_rejects_non_numeric_amounts():
+    client = FakeClient(_reply(tool_calls=[_tool_call("find_transactions", {"min_amount": "lots"})]), _reply(content="ok"))
+    ctx, load = _ctx()
+    run_turn(client, [], "q", ctx)
+    assert "error" in json.loads(client.calls[1]["messages"][-1]["content"])
+
+
+# ── portfolio_summary ────────────────────────────────────────────────────────
+
+SNAPSHOT = {
+    "assets": [{"id": "a1", "name": "DBS Multiplier", "kind": "cash", "value": 50000.0, "ticker": None}],
+    "debts": [{"id": "d1", "name": "Car loan", "kind": "loan", "value": 10000.0, "apr": 2.8, "monthly": 600.0}],
+    "histories": {"asset:a1": [{"as_of_date": "2026-09-01", "value": 50000.0}],
+                  "debt:d1": [{"as_of_date": "2026-09-01", "value": 10000.0}]},
+    "goals": [
+        {"id": "g1", "kind": "net_worth", "name": "First 100k", "target_amount": 100000.0, "target_date": "2027-12-31"},
+        {"id": "g2", "kind": "debt_payoff", "name": "Kill car loan", "debt_id": "d1", "target_date": None},
+    ],
+    "asset_kind_names": {},
+}
+
+
+def test_portfolio_summary_reports_net_worth_and_named_goals():
+    out = portfolio_summary(SNAPSHOT)
+    assert out["net_worth"] == 40000.0 and out["total_debts"] == 10000.0
+    assert out["goals"] == [
+        {"name": "First 100k", "kind": "net_worth", "target_amount": 100000.0, "target_date": "2027-12-31"},
+        {"name": "Kill car loan", "kind": "debt_payoff", "debt_index": 0, "target_date": None},
+    ]
+    assert out["debts"][0]["balance"] == 10000.0
+
+
+def test_run_turn_loads_portfolio_only_when_the_tool_is_used():
+    ctx, _ = _ctx()
+    ctx.load_portfolio.return_value = SNAPSHOT
+    run_turn(FakeClient(_reply(content="hi")), [], "hello", ctx)
+    ctx.load_portfolio.assert_not_called()
+    client = FakeClient(_reply(tool_calls=[_tool_call("portfolio_summary", {})]), _reply(content="40k"))
+    run_turn(client, [], "net worth?", ctx)
+    ctx.load_portfolio.assert_called_once()
+    assert json.loads(client.calls[1]["messages"][-1]["content"])["net_worth"] == 40000.0
 
 
 # ── run_turn ─────────────────────────────────────────────────────────────────
@@ -232,3 +311,8 @@ def test_module_imports_neither_pandas_nor_openai():
     src = open(assistant.__file__).read()
     top = [line for line in src.splitlines() if line.startswith(("import ", "from "))]
     assert not any("pandas" in line or "openai" in line for line in top)
+
+
+def test_run_turn_strips_markdown_bold_since_replies_render_as_plain_text():
+    client = FakeClient(_reply(content="Your net worth is **$58,000**."))
+    assert run_turn(client, [], "q", _ctx()[0]) == "Your net worth is $58,000."
