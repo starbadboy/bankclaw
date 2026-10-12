@@ -345,6 +345,24 @@ async function apiAiReview({ range_days = 90, profile_id = null, force_refresh =
   return res.json();
 }
 
+// ── AI assistant ──────────────────────────────────────────────────────────
+
+async function _assistantJson(res, fallback) {
+  if (res.ok) return res.json();
+  const err = await res.json().catch(() => ({}));
+  const error = new Error(err.detail || fallback);
+  error.status = res.status;
+  throw error;
+}
+
+async function apiAssistantSend({ message, thread_id = null, profile_id = null } = {}) {
+  const res = await _fetch("/api/assistant/messages", {
+    method: "POST",
+    body: JSON.stringify({ message, thread_id, profile_id }),
+  });
+  return _assistantJson(res, "Assistant unavailable — try again");
+}
+
 async function apiDeleteProfile(id) {
   const res = await _fetch(`/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || "Failed"); }
@@ -509,6 +527,7 @@ Object.assign(window, {
   apiFetchPortfolioValuations, apiRecordPortfolioValuation, apiDeletePortfolioValuation, apiFetchAssetMarketHistory,
   apiFetchPortfolioGoals, apiCreatePortfolioGoal, apiUpdatePortfolioGoal, apiDeletePortfolioGoal, apiGoalSuggestions,
   apiAiReview,
+  apiAssistantSend,
   apiExportCsv,
   normalizeApiTransaction, getCatInfo,
 });

@@ -91,3 +91,20 @@ test("deleting a valuation targets its exact date", async () => {
   assert.equal(request.path, "/api/portfolio/debt/debt-id/valuations/2026-04-30");
   assert.equal(request.options.method, "DELETE");
 });
+
+test("assistant send posts message, thread and profile and surfaces the server's error detail", async () => {
+  const requests = [];
+  global.fetch = async (path, options = {}) => {
+    requests.push({ path, options });
+    if (requests.length === 1) return jsonResponse({ thread: { id: "t1", title: "Q" }, reply: "A" });
+    return { ok: false, status: 503, json: async () => ({ detail: "AI assistant not configured" }) };
+  };
+
+  const out = await apiAssistantSend({ message: "Q", thread_id: null, profile_id: "p1" });
+  assert.deepEqual(out, { thread: { id: "t1", title: "Q" }, reply: "A" });
+  assert.equal(requests[0].path, "/api/assistant/messages");
+  assert.equal(requests[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(requests[0].options.body), { message: "Q", thread_id: null, profile_id: "p1" });
+
+  await assert.rejects(apiAssistantSend({ message: "Q" }), (err) => err.message === "AI assistant not configured" && err.status === 503);
+});

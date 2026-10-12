@@ -731,6 +731,63 @@ async def ai_review(request: Request, user: str = Depends(_current_user)) -> dic
 
 
 # ---------------------------------------------------------------------------
+# AI assistant
+# ---------------------------------------------------------------------------
+def _optional_id(body: dict, name: str) -> str | None:
+    value = body.get(name)
+    if value in (None, ""):
+        return None
+    if not (isinstance(value, str) and len(value) <= 64):
+        raise HTTPException(status_code=400, detail=f"{name} must be an id")
+    return value
+
+
+@app.post("/api/assistant/messages")
+async def assistant_message(request: Request, user: str = Depends(_current_user)) -> dict:
+    """One chat turn. Body: ``{message, thread_id?, profile_id?}``; a thread is created on the first reply."""
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — empty or non-JSON body is an invalid message below
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    thread_id = _optional_id(body, "thread_id")
+    profile_id = _optional_id(body, "profile_id")
+    from pymongo.errors import PyMongoError  # noqa: PLC0415
+
+    from webapp.assistant import (  # noqa: PLC0415 — lazy, like goal_advisor
+        AssistantInputError,
+        AssistantNotConfigured,
+        ThreadNotFound,
+        send_message,
+    )
+
+    def load_records(start: str, end: str, profile: str) -> list[dict]:
+        main = ensure_main_profile(user)
+        filter_profile = None if (not profile or profile == "all") else profile
+        df = get_transactions_by_date_range(start, end, user, profile_id=filter_profile, main_profile_id=main["id"])
+        return [] if df.empty else df.to_dict("records")
+
+    try:
+        return await asyncio.to_thread(
+            send_message, user, profile_id, thread_id, body.get("message"), load_records, lambda: _portfolio_snapshot(user)
+        )
+    except AssistantInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ThreadNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AssistantNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        logging.getLogger(__name__).warning("assistant database error for %s: %r", user, exc)
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("assistant turn failed for %s: %r", user, exc)
+        raise HTTPException(status_code=502, detail="Assistant unavailable — try again") from exc
+
+
+# ---------------------------------------------------------------------------
 # Import
 # ---------------------------------------------------------------------------
 @app.post("/api/import")
