@@ -544,6 +544,7 @@ function Sidebar({ page, mode, onMode, onNav, onSignOut, onChangePassword, mobil
     { id: "insights", label: "Insights", icon: "pie" },
     { id: "import", label: "Import", icon: "upload" },
     { id: "coach", label: "AI Coach", icon: "sparkle" },
+    { id: "assistant", label: "Assistant", icon: "sparkle" },
   ];
   const ledgerMeta = [
     { id: "history", label: "History", icon: "clock" },
@@ -556,6 +557,7 @@ function Sidebar({ page, mode, onMode, onNav, onSignOut, onChangePassword, mobil
     { id: "pf-holdings", label: "Holdings", icon: "list" },
     { id: "pf-allocation", label: "Allocation", icon: "pie" },
     { id: "pf-performance", label: "Performance", icon: "sparkle" },
+    { id: "assistant", label: "Assistant", icon: "sparkle" },
   ];
   const portfolioMeta = [
     { id: "pf-goals", label: "Goals", icon: "check" },
@@ -641,6 +643,7 @@ function Topbar({ page, mode, query, setQuery, privacy, setPrivacy, onOpenTweaks
     insights: ["Workspace", "Insights"],
     import: ["Workspace", "Import"],
     coach: ["Workspace", "AI Coach"],
+    assistant: ["Workspace", "Assistant"],
     history: ["Library", "History"],
     categories: ["Library", "Categories"],
     profiles: ["Library", "Profiles"],
@@ -653,6 +656,7 @@ function Topbar({ page, mode, query, setQuery, privacy, setPrivacy, onOpenTweaks
     "pf-performance": ["Wealth", "Performance"],
     "pf-goals":       ["Library", "Goals"],
     "pf-accounts":    ["Library", "Linked accounts"],
+    assistant:        ["Wealth", "Assistant"],
   };
   const isPF = mode === "portfolio";
   const crumbs = (isPF ? portfolioCrumbs : ledgerCrumbs)[page] || ["Workspace", page];
@@ -1017,7 +1021,7 @@ function App() {
 
   const onMode = (m) => {
     setMode(m);
-    if (m === "portfolio" && !page.startsWith("pf-")) setPage("pf-networth");
+    if (m === "portfolio" && !page.startsWith("pf-") && page !== "assistant") setPage("pf-networth");
     if (m === "ledger" && page.startsWith("pf-")) setPage("overview");
     setOpenTx(null);
   };
@@ -1053,6 +1057,7 @@ function App() {
         {mode === "ledger" && page === "insights" && <InsightsPage transactions={transactions} privacy={tweaks.privacy} />}
         {mode === "ledger" && page === "import" && <ImportPage privacy={tweaks.privacy} onNav={navigate} onImportDone={loadTransactions} profiles={profiles} currentProfileId={currentProfileId} />}
         {mode === "ledger" && page === "coach" && <CoachPage currentProfileId={currentProfileId} profiles={profiles} />}
+        {page === "assistant" && <AssistantPage currentProfileId={currentProfileId} />}
         {mode === "ledger" && page === "history" && <HistoryPage transactions={transactions} privacy={tweaks.privacy} onOpenTx={setOpenTx} />}
         {mode === "ledger" && page === "categories" && <CategoriesPage transactions={transactions} privacy={tweaks.privacy} availableCategories={allCategories} reloadCategories={loadCategories} />}
         {mode === "ledger" && page === "profiles" && <ProfilesPage profiles={profiles} reloadProfiles={loadProfiles} />}

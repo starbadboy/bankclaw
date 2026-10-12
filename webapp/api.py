@@ -469,6 +469,22 @@ async def get_portfolio_goals(user: str = Depends(_current_user)) -> dict:
     return {"goals": list_goals(user)}
 
 
+def _portfolio_snapshot(user: str) -> dict:
+    """Assets, debts, valuation histories, goals and custom kind names — the input of the AI aggregates."""
+    portfolio = list_portfolio(user)
+    histories = {
+        f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
+        for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
+        for item in items
+    }
+    return {
+        **portfolio,
+        "histories": histories,
+        "goals": list_goals(user),
+        "asset_kind_names": {t["id"]: t["name"] for t in list_asset_types(user)},
+    }
+
+
 @app.post("/api/portfolio/goals/suggestions")
 async def get_goal_suggestions(request: Request, user: str = Depends(_current_user)) -> dict:
     """AI goal suggestions from portfolio aggregates. Cached per user; ``force_refresh`` / ``dismiss`` in the body."""
@@ -484,23 +500,9 @@ async def get_goal_suggestions(request: Request, user: str = Depends(_current_us
         raise HTTPException(status_code=400, detail="dismiss must be a suggestion id")
     from webapp.goal_advisor import AdvisorBusy, AdvisorNotConfigured, get_suggestions  # noqa: PLC0415 — lazy, like ai_coach
 
-    def build_portfolio() -> dict:  # only runs when a generation is needed
-        portfolio = list_portfolio(user)
-        histories = {
-            f"{item_type}:{item['id']}": list_valuations(user, item_type, item["id"])
-            for item_type, items in (("asset", portfolio["assets"]), ("debt", portfolio["debts"]))
-            for item in items
-        }
-        return {
-            **portfolio,
-            "histories": histories,
-            "goals": list_goals(user),
-            "asset_kind_names": {t["id"]: t["name"] for t in list_asset_types(user)},
-        }
-
     try:
         return await asyncio.to_thread(
-            get_suggestions, user, build_portfolio, force_refresh=bool(body.get("force_refresh")), dismiss=raw_dismiss or None
+            get_suggestions, user, lambda: _portfolio_snapshot(user), force_refresh=bool(body.get("force_refresh")), dismiss=raw_dismiss or None
         )
     except AdvisorNotConfigured as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -726,6 +728,92 @@ async def ai_review(request: Request, user: str = Depends(_current_user)) -> dic
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"AI review failed: {exc}") from exc
+
+
+# ---------------------------------------------------------------------------
+# AI assistant
+# ---------------------------------------------------------------------------
+def _load_records(user: str, start: str, end: str, profile_id: str | None) -> list[dict]:
+    """The user's transactions in [start, end] for one profile (``all``/empty = every profile), as dicts."""
+    main = ensure_main_profile(user)
+    filter_profile = None if (not profile_id or profile_id == "all") else profile_id
+    df = get_transactions_by_date_range(start, end, user, profile_id=filter_profile, main_profile_id=main["id"])
+    return [] if df.empty else df.to_dict("records")
+
+
+def _optional_id(body: dict, name: str) -> str | None:
+    value = body.get(name)
+    if value in (None, ""):
+        return None
+    if not (isinstance(value, str) and len(value) <= 64):
+        raise HTTPException(status_code=400, detail=f"{name} must be an id")
+    return value
+
+
+async def _assistant_call(fn, *args):  # noqa: ANN001, ANN202
+    """Run a blocking assistant function off the event loop and map its errors to HTTP statuses."""
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    from pymongo.errors import PyMongoError  # noqa: PLC0415
+
+    from webapp.assistant import AssistantInputError, AssistantNotConfigured, ThreadNotFound  # noqa: PLC0415
+
+    try:
+        return await asyncio.to_thread(fn, *args)
+    except AssistantInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ThreadNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except AssistantNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PyMongoError as exc:
+        logging.getLogger(__name__).warning("assistant database error: %r", exc)
+        raise HTTPException(status_code=503, detail="Database unavailable") from exc
+    except Exception as exc:  # noqa: BLE001
+        logging.getLogger(__name__).warning("assistant call failed: %r", exc)
+        raise HTTPException(status_code=502, detail="Assistant unavailable — try again") from exc
+
+
+@app.post("/api/assistant/messages")
+async def assistant_message(request: Request, user: str = Depends(_current_user)) -> dict:
+    """One chat turn. Body: ``{message, thread_id?, profile_id?}``; a thread is created on the first reply."""
+    if not _MONGO:
+        raise HTTPException(status_code=503, detail="Database not available")
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — empty or non-JSON body is an invalid message below
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    thread_id = _optional_id(body, "thread_id")
+    profile_id = _optional_id(body, "profile_id")
+    from webapp.assistant import send_message  # noqa: PLC0415 — lazy, like goal_advisor
+
+    return await _assistant_call(
+        send_message, user, profile_id, thread_id, body.get("message"),
+        lambda start, end, profile: _load_records(user, start, end, profile), lambda: _portfolio_snapshot(user),
+    )
+
+
+@app.get("/api/assistant/threads")
+async def assistant_list_threads(user: str = Depends(_current_user)) -> dict:
+    from webapp.assistant import is_configured, list_threads  # noqa: PLC0415
+
+    return {"threads": await _assistant_call(list_threads, user), "configured": is_configured()}
+
+
+@app.get("/api/assistant/threads/{thread_id}")
+async def assistant_get_thread(thread_id: str, user: str = Depends(_current_user)) -> dict:
+    from webapp.assistant import get_thread  # noqa: PLC0415
+
+    return {"thread": await _assistant_call(get_thread, user, thread_id)}
+
+
+@app.delete("/api/assistant/threads/{thread_id}")
+async def assistant_delete_thread(thread_id: str, user: str = Depends(_current_user)) -> dict:
+    from webapp.assistant import delete_thread  # noqa: PLC0415
+
+    await _assistant_call(delete_thread, user, thread_id)
+    return {"deleted": True}
 
 
 # ---------------------------------------------------------------------------
