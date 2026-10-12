@@ -432,3 +432,11 @@ def test_thread_index_is_created_once_per_process(monkeypatch):
         list_threads("owner@example.com")
         list_threads("owner@example.com")
     assert coll.create_index.call_count == 1
+
+
+def test_huge_integer_tool_numbers_return_an_error_instead_of_crashing():
+    call = SimpleNamespace(id="h", type="function",
+                           function=SimpleNamespace(name="find_transactions", arguments='{"limit": 1' + "0" * 400 + "}"))
+    client = FakeClient(_reply(tool_calls=[call]), _reply(content="ok"))
+    assert run_turn(client, [], "q", _ctx()[0]) == "ok"
+    assert "finite" in json.loads(client.calls[1]["messages"][-1]["content"])["error"]

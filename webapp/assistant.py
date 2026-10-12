@@ -252,9 +252,15 @@ def _optional_number(args: dict, name: str) -> float | None:
     value = args.get(name)
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise AssistantInputError(f"{name} must be a finite number")
-    return float(value)
+    try:
+        number = float(value)  # a >309-digit int overflows here
+    except OverflowError as exc:
+        raise AssistantInputError(f"{name} must be a finite number") from exc
+    if not math.isfinite(number):
+        raise AssistantInputError(f"{name} must be a finite number")
+    return number
 
 
 def _parse_range(args: dict) -> tuple[str, str]:
