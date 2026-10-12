@@ -557,6 +557,7 @@ function Sidebar({ page, mode, onMode, onNav, onSignOut, onChangePassword, mobil
     { id: "pf-holdings", label: "Holdings", icon: "list" },
     { id: "pf-allocation", label: "Allocation", icon: "pie" },
     { id: "pf-performance", label: "Performance", icon: "sparkle" },
+    { id: "assistant", label: "Assistant", icon: "sparkle" },
   ];
   const portfolioMeta = [
     { id: "pf-goals", label: "Goals", icon: "check" },
@@ -655,6 +656,7 @@ function Topbar({ page, mode, query, setQuery, privacy, setPrivacy, onOpenTweaks
     "pf-performance": ["Wealth", "Performance"],
     "pf-goals":       ["Library", "Goals"],
     "pf-accounts":    ["Library", "Linked accounts"],
+    assistant:        ["Wealth", "Assistant"],
   };
   const isPF = mode === "portfolio";
   const crumbs = (isPF ? portfolioCrumbs : ledgerCrumbs)[page] || ["Workspace", page];
@@ -1019,7 +1021,7 @@ function App() {
 
   const onMode = (m) => {
     setMode(m);
-    if (m === "portfolio" && !page.startsWith("pf-")) setPage("pf-networth");
+    if (m === "portfolio" && !page.startsWith("pf-") && page !== "assistant") setPage("pf-networth");
     if (m === "ledger" && page.startsWith("pf-")) setPage("overview");
     setOpenTx(null);
   };

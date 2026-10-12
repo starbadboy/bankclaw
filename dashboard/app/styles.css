@@ -1384,3 +1384,10 @@ body {
 .chat-thread.active .chat-thread-title { color: var(--ink); font-weight: 500; }
 .chat-thread-delete { background: none; border: 0; color: var(--ink-4); font-size: 16px; padding: 4px 8px; cursor: pointer; }
 .chat-thread-delete:hover:not(:disabled) { color: var(--debit); }
+.chat-composer .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@media (max-width: 720px) {
+  .assistant-layout { grid-template-columns: 1fr; }
+  .chat-threads { max-height: 180px; }
+  .chat { max-height: none; min-height: 60vh; }
+  .chat-msg { max-width: 92%; }
+}

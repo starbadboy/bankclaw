@@ -65,3 +65,11 @@ test("thread list empty state", () => {
   const html = render(AssistantThreads, { threads: [], activeId: null, onNew() {}, onOpen() {}, onDelete() {} });
   assert.match(html, /No saved chats yet/);
 });
+
+test("not configured: explains the missing key and disables the composer and examples", () => {
+  const html = render(AssistantChat, { ...base, configured: false });
+  assert.match(html, /AI assistant not configured/);
+  assert.match(html, /DEEPSEEK_API_KEY/);
+  assert.match(html, /<textarea[^>]*disabled=""/);
+  assert.doesNotMatch(html, /How much did I spend/);
+});

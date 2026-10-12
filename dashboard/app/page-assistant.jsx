@@ -14,12 +14,18 @@ function AssistantChat({ messages, pending, error, draft, configured, onDraft, o
   return (
     <div className="chat panel">
       <div className="chat-log">
-        {messages.length === 0 && !pending && (
+        {!configured && (
+          <div className="chat-empty">
+            <div className="chat-empty-title">AI assistant not configured.</div>
+            <div className="chat-threads-empty">Set <code>DEEPSEEK_API_KEY</code> on the server to enable it.</div>
+          </div>
+        )}
+        {configured && messages.length === 0 && !pending && (
           <div className="chat-empty">
             <div className="chat-empty-title">Ask anything about your money.</div>
             <div className="chat-examples">
               {ASSISTANT_EXAMPLES.map((q) => (
-                <button key={q} className="chat-example" onClick={() => onDraft(q)} disabled={!configured}>{q}</button>
+                <button key={q} className="chat-example" onClick={() => onDraft(q)}>{q}</button>
               ))}
             </div>
           </div>
@@ -73,11 +79,13 @@ function AssistantPage({ currentProfileId = "all" }) {
   const [draft, setDraft] = useStateAS("");
   const [pending, setPending] = useStateAS(false);
   const [error, setError] = useStateAS("");
+  const [configured, setConfigured] = useStateAS(true);
 
   const refreshThreads = async () => {
     try {
       const res = await apiAssistantThreads();
       setThreads(res.threads || []);
+      setConfigured(res.configured !== false);
     } catch (e) {
       setError(e.message || "Failed to load chats");
     }
@@ -130,7 +138,7 @@ function AssistantPage({ currentProfileId = "all" }) {
 
   return (
     <div className="page">
-      <div className="page-kicker">Workspace</div>
+      <div className="page-kicker">Ledger &amp; Wealth</div>
       <h1 className="page-title"><i>Assistant.</i></h1>
       <div className="page-sub">
         Ask questions about your transactions and portfolio. Totals are computed on the server; the model sees only
@@ -140,7 +148,7 @@ function AssistantPage({ currentProfileId = "all" }) {
       <div className="assistant-layout">
         <AssistantThreads threads={threads} activeId={threadId} pending={pending}
           onNew={newChat} onOpen={openThread} onDelete={deleteThread} />
-        <AssistantChat messages={messages} pending={pending} error={error} draft={draft} configured
+        <AssistantChat messages={messages} pending={pending} error={error} draft={draft} configured={configured}
           onDraft={setDraft} onSend={send} />
       </div>
     </div>
